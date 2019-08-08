@@ -1,0 +1,37 @@
+diff --git a/include/margo.h b/include/margo.h
+index 56aa9dd..9dd49a8 100644
+--- a/include/margo.h
++++ b/include/margo.h
+@@ -435,6 +435,12 @@ hg_return_t margo_create(
+     hg_id_t id,
+     hg_handle_t *handle);
+ 
++hg_return_t margo_create_cache(
++    margo_instance_id mid,
++    hg_addr_t addr,
++    hg_id_t id,
++    hg_handle_t *handle);
++
+ /**
+  * Destroy Mercury handle.
+  *
+diff --git a/src/margo.c b/src/margo.c
+index df035c1..87c2524 100644
+--- a/src/margo.c
++++ b/src/margo.c
+@@ -716,6 +716,15 @@ hg_return_t margo_create(margo_instance_id mid, hg_addr_t addr,
+     hg_id_t id, hg_handle_t *handle)
+ {
+     hg_return_t hret = HG_OTHER_ERROR;
++    hret = HG_Create(mid->hg_context, addr, id, handle);
++
++    return hret;
++}
++
++hg_return_t margo_create_cache(margo_instance_id mid, hg_addr_t addr,
++    hg_id_t id, hg_handle_t *handle)
++{
++    hg_return_t hret = HG_OTHER_ERROR;
+ 
+     /* look for a handle to reuse */
+     hret = margo_handle_cache_get(mid, addr, id, handle);

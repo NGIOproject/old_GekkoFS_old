@@ -1,0 +1,109 @@
+FROM centos:7 as builder
+
+
+ENV GKFS_PATH	/opt/gkfs
+
+ENV SCRIPTS_PATH	${GKFS_PATH}/scripts
+ENV DEPS_SRC_PATH	${GKFS_PATH}/deps_src
+ENV INSTALL_PATH	${GKFS_PATH}/build_deps
+
+
+# Enable epel and scl repository
+RUN yum -y -q update  && yum -y -q install \
+	epel-release \
+	centos-release-scl \
+&& yum -y -q clean all
+
+# Install compile script dependencies
+RUN yum -y -q update  && yum -y -q install \
+	git \
+	wget \
+	make \
+	automake \
+	cmake \
+	cmake3 \
+	gcc \
+	gcc-c++ \
+	openssl-devel \
+	# Mercury dependencies
+	libtool \
+	libtool-ltdl-devel \
+	boost-devel \
+	# RocksDB
+	which \
+	snappy-devel \
+	libzstd-devel \
+	lz4-devel \
+	bzip2-devel \
+	# ada-fs requires C++ 14
+	devtoolset-8-gcc \
+	devtoolset-8-gcc-c++ \
+	libuuid-devel \
+	# syscall_intercept
+	capstone \
+	capstone-devel \
+&& yum -y -q clean all
+
+# Enable gcc/g++ 8.x
+ENV	CC		"/opt/rh/devtoolset-8/root/usr/bin/gcc"
+ENV	CXX		"/opt/rh/devtoolset-8/root/usr/bin/g++"
+
+# Download dependencies source
+COPY scripts/dl_dep.sh		$SCRIPTS_PATH/
+RUN /bin/bash $SCRIPTS_PATH/dl_dep.sh $DEPS_SRC_PATH all
+
+# Compile dependencies
+COPY scripts/compile_dep.sh $SCRIPTS_PATH/
+COPY scripts/patches        $SCRIPTS_PATH/patches
+RUN /bin/bash $SCRIPTS_PATH/compile_dep.sh $DEPS_SRC_PATH $INSTALL_PATH
+
+
+FROM centos:7
+
+ENV GKFS_PATH	/opt/gkfs
+ENV INSTALL_PATH	${GKFS_PATH}/build_deps
+
+
+# Enable epel and scl repository
+RUN yum -y -q update  && yum -y -q install \
+	epel-release \
+	centos-release-scl \
+&& yum -y -q clean all
+
+# Install compile script dependencies
+RUN yum -y -q update  && yum -y -q install \
+	git \
+	wget \
+	make \
+	automake \
+	cmake \
+	cmake3 \
+	gcc \
+	gcc-c++ \
+	openssl-devel \
+	# Mercury dependencies
+	libtool \
+	libtool-ltdl-devel \
+	boost-devel \
+	# RocksDB
+	which \
+	snappy-devel \
+	libzstd-devel \
+	lz4-devel \
+	bzip2-devel \
+	# ada-fs requires C++ 14
+	devtoolset-8-gcc \
+	devtoolset-8-gcc-c++ \
+	libuuid-devel \
+	# syscall_intercept
+	capstone \
+	capstone-devel \
+&& yum -y -q clean all
+
+
+# Enable gcc/g++ 8.x
+ENV	CC		"/opt/rh/devtoolset-8/root/usr/bin/gcc"
+ENV	CXX		"/opt/rh/devtoolset-8/root/usr/bin/g++"
+
+
+COPY --from=builder ${INSTALL_PATH} ${INSTALL_PATH}
