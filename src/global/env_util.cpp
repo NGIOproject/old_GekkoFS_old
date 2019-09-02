@@ -22,7 +22,7 @@ namespace gkfs {
 using namespace std;
 
 string get_env(const string& env_name) {
-    char* env_value = getenv(env_name.c_str());
+    char* env_value = secure_getenv(env_name.c_str());
     if (env_value == nullptr) {
         throw runtime_error("Environment variable not set: " + env_name);
     }
