@@ -11,20 +11,11 @@
   SPDX-License-Identifier: MIT
 */
 
-#include <string>
-#include <cstdlib>
-#include <global/env_util.hpp>
+#ifndef LIBGKFS_SYSCALLS_HPP
+#define LIBGKFS_SYSCALLS_HPP
 
-namespace gkfs {
-namespace env {
+#include <client/syscalls/syscall.hpp>
+#include <client/syscalls/errno.hpp>
+#include <client/syscalls/decoder.hpp>
 
-std::string
-get_var(const std::string& name, 
-        const std::string& default_value) {
-
-    const char* const val = ::secure_getenv(name.c_str());
-    return val != nullptr ? std::string(val) : default_value;
-}
-
-} // namespace env
-} // namespace gkfs
+#endif // LIBGKFS_SYSCALLS_HPP

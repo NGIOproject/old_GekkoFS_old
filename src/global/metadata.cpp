@@ -14,7 +14,7 @@
 #include "global/metadata.hpp"
 #include "global/configure.hpp"
 
-#include <fmt/fmt.h>
+#include <fmt/format.h>
 #include <sys/stat.h>
 #include <unistd.h>
 

@@ -37,5 +37,5 @@ target_sources(metadata
     ${CMAKE_CURRENT_LIST_DIR}/metadata.cpp
     )
 target_link_libraries(metadata
-    fmt
+    fmt::fmt
     )

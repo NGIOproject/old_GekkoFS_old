@@ -11,7 +11,6 @@
   SPDX-License-Identifier: MIT
 */
 
-#include <global/log_util.hpp>
 #include <global/env_util.hpp>
 #include <global/path_util.hpp>
 #include <global/global_defs.hpp>
@@ -20,15 +19,23 @@
 #include <client/resolve.hpp>
 #include <global/rpc/distributor.hpp>
 #include "global/rpc/rpc_types.hpp"
+#include <client/logging.hpp>
 #include <client/rpc/ld_rpc_management.hpp>
 #include <client/preload_util.hpp>
 #include <client/intercept.hpp>
+#include <client/rpc/hg_rpcs.hpp>
+#include <hermes.hpp>
+
+#include <sys/types.h>
+#include <dirent.h>
+#include <stdarg.h>
 
 #include <fstream>
 
+
 using namespace std;
-//
-// thread to initialize the whole margo shazaam only once per process
+
+// make sure that things are only initialized once
 static pthread_once_t init_env_thread = PTHREAD_ONCE_INIT;
 
 // RPC IDs
@@ -46,120 +53,84 @@ hg_id_t rpc_read_data_id;
 hg_id_t rpc_trunc_data_id;
 hg_id_t rpc_get_dirents_id;
 hg_id_t rpc_chunk_stat_id;
-// Margo instances
-margo_instance_id ld_margo_rpc_id;
 
+std::unique_ptr<hermes::async_engine> ld_network_service;
 
 static inline void exit_error_msg(int errcode, const string& msg) {
-    CTX->log()->error(msg);
-    cerr << "GekkoFS error: " << msg << endl;
-    exit(errcode);
+
+    LOG_ERROR("{}", msg);
+    gkfs::log::logger::log_message(stderr, "{}\n", msg);
+
+    // if we don't disable interception before calling ::exit()
+    // syscall hooks may find an inconsistent in shared state
+    // (e.g. the logger) and thus, crash
+    stop_interception();
+    CTX->disable_interception();
+    ::exit(errcode);
 }
 
 /**
- * Registers a margo instance with all used RPC
- * Note that the r(pc tags are redundant for rpc
- * @param mid
- * @param mode
+ * Initializes the Hermes client for a given transport prefix
+ * @param transport_prefix
+ * @return true if succesfully initialized; false otherwise
  */
-void register_client_rpcs(margo_instance_id mid) {
+bool init_hermes_client(const std::string& transport_prefix) {
 
-    rpc_config_id = MARGO_REGISTER(mid,
-        hg_tag::fs_config,
-        void,
-        rpc_config_out_t,
-        NULL);
+    try {
 
-    rpc_mk_node_id = MARGO_REGISTER(mid, hg_tag::create, rpc_mk_node_in_t, rpc_err_out_t, NULL);
-    rpc_stat_id = MARGO_REGISTER(mid, hg_tag::stat, rpc_path_only_in_t, rpc_stat_out_t, NULL);
-    rpc_rm_node_id = MARGO_REGISTER(mid, hg_tag::remove, rpc_rm_node_in_t,
-                                    rpc_err_out_t, NULL);
+        hermes::engine_options opts{};
 
-    rpc_decr_size_id = MARGO_REGISTER(mid,
-        hg_tag::decr_size,
-        rpc_trunc_in_t,
-        rpc_err_out_t,
-        NULL);
-
-    rpc_update_metadentry_id = MARGO_REGISTER(mid, hg_tag::update_metadentry, rpc_update_metadentry_in_t,
-                                              rpc_err_out_t, NULL);
-    rpc_get_metadentry_size_id = MARGO_REGISTER(mid, hg_tag::get_metadentry_size, rpc_path_only_in_t,
-                                                rpc_get_metadentry_size_out_t, NULL);
-    rpc_update_metadentry_size_id = MARGO_REGISTER(mid, hg_tag::update_metadentry_size,
-                                                   rpc_update_metadentry_size_in_t,
-                                                   rpc_update_metadentry_size_out_t,
-                                                   NULL);
-
-#ifdef HAS_SYMLINKS
-    rpc_mk_symlink_id = MARGO_REGISTER(mid,
-         hg_tag::mk_symlink,
-         rpc_mk_symlink_in_t,
-         rpc_err_out_t,
-         NULL);
-#endif
-
-    rpc_write_data_id = MARGO_REGISTER(mid, hg_tag::write_data, rpc_write_data_in_t, rpc_data_out_t,
-                                       NULL);
-    rpc_read_data_id = MARGO_REGISTER(mid, hg_tag::read_data, rpc_read_data_in_t, rpc_data_out_t,
-                                      NULL);
-
-    rpc_trunc_data_id = MARGO_REGISTER(mid,
-         hg_tag::trunc_data,
-         rpc_trunc_in_t,
-         rpc_err_out_t,
-         NULL);
-
-    rpc_get_dirents_id = MARGO_REGISTER(mid, hg_tag::get_dirents, rpc_get_dirents_in_t, rpc_get_dirents_out_t,
-                                      NULL);
-
-    rpc_chunk_stat_id = MARGO_REGISTER(mid,
-        hg_tag::chunk_stat,
-        rpc_chunk_stat_in_t,
-        rpc_chunk_stat_out_t,
-        NULL);
-}
-
-/**
- * Initializes the Margo client for a given na_plugin
- * @param mode
- * @param na_plugin
- * @return
- */
-bool init_margo_client(const std::string& na_plugin) {
-    // IMPORTANT: this struct needs to be zeroed before use
-    struct hg_init_info hg_options = {};
 #if USE_SHM
-    hg_options.auto_sm = HG_TRUE;
-#else
-    hg_options.auto_sm = HG_FALSE;
+        opts |= hermes::use_auto_sm;
 #endif
-    hg_options.stats = HG_FALSE;
-    hg_options.na_class = nullptr;
 
-    ld_margo_rpc_id = margo_init_opt(na_plugin.c_str(),
-                                     MARGO_CLIENT_MODE,
-                                     &hg_options,
-                                     HG_FALSE,
-                                     1);
-    if (ld_margo_rpc_id == MARGO_INSTANCE_NULL) {
-        CTX->log()->error("{}() margo_init_pool failed to initialize the Margo client", __func__);
+        ld_network_service = 
+            std::make_unique<hermes::async_engine>(
+                    hermes::get_transport_type(transport_prefix), opts);
+        ld_network_service->run();
+    } catch (const std::exception& ex) {
+        fmt::print(stderr, "Failed to initialize Hermes RPC client {}\n", 
+                   ex.what());
         return false;
     }
-    register_client_rpcs(ld_margo_rpc_id);
+
+    rpc_config_id = gkfs::rpc::fs_config::public_id;
+    rpc_mk_node_id = gkfs::rpc::create::public_id;
+    rpc_stat_id = gkfs::rpc::stat::public_id;
+    rpc_rm_node_id = gkfs::rpc::remove::public_id;
+    rpc_decr_size_id = gkfs::rpc::decr_size::public_id;
+    rpc_update_metadentry_id = gkfs::rpc::update_metadentry::public_id;
+    rpc_get_metadentry_size_id = gkfs::rpc::get_metadentry_size::public_id;
+    rpc_update_metadentry_size_id = gkfs::rpc::update_metadentry::public_id;
+
+#ifdef HAS_SYMLINKS
+    rpc_mk_symlink_id = gkfs::rpc::mk_symlink::public_id;
+#endif // HAS_SYMLINKS
+
+    rpc_write_data_id = gkfs::rpc::write_data::public_id;
+    rpc_read_data_id = gkfs::rpc::read_data::public_id;
+    rpc_trunc_data_id = gkfs::rpc::trunc_data::public_id;
+    rpc_get_dirents_id = gkfs::rpc::get_dirents::public_id;
+    rpc_chunk_stat_id = gkfs::rpc::chunk_stat::public_id;
+
     return true;
 }
 
 /**
- * This function is only called in the preload constructor and initializes Argobots and Margo clients
+ * This function is only called in the preload constructor and initializes 
+ * the file system client
  */
 void init_ld_environment_() {
 
-    //use rpc_addresses here to avoid "static initialization order problem"
-    if (!init_margo_client(RPC_PROTOCOL)) {
-        exit_error_msg(EXIT_FAILURE, "Unable to initializa Margo RPC client");
+    // initialize Hermes interface to Mercury
+    LOG(INFO, "Initializing RPC subsystem...");
+
+    if (!init_hermes_client(RPC_PROTOCOL)) {
+        exit_error_msg(EXIT_FAILURE, "Unable to initialize RPC subsystem");
     }
 
     try {
+        LOG(INFO, "Loading peer addresses...");
         load_hosts();
     } catch (const std::exception& e) {
         exit_error_msg(EXIT_FAILURE, "Failed to load hosts addresses: "s + e.what());
@@ -169,51 +140,32 @@ void init_ld_environment_() {
     auto simple_hash_dist = std::make_shared<SimpleHashDistributor>(CTX->local_host_id(), CTX->hosts().size());
     CTX->distributor(simple_hash_dist);
 
+    LOG(INFO, "Retrieving file system configuration...");
+
     if (!rpc_send::get_fs_config()) {
         exit_error_msg(EXIT_FAILURE, "Unable to fetch file system configurations from daemon process through RPC.");
     }
 
-    CTX->log()->info("{}() Environment initialization successful.", __func__);
+    LOG(INFO, "Environment initialization successful.");
 }
 
 void init_ld_env_if_needed() {
     pthread_once(&init_env_thread, init_ld_environment_);
 }
 
-void init_logging() {
-    std::string path;
-    try {
-        path = gkfs::get_env_own("PRELOAD_LOG_PATH");
-    } catch (const std::exception& e) {
-        path = DEFAULT_PRELOAD_LOG_PATH;
-    }
-
-    spdlog::level::level_enum level;
-    try {
-        level = get_spdlog_level(gkfs::get_env_own("LOG_LEVEL"));
-    } catch (const std::exception& e) {
-        level = get_spdlog_level(DEFAULT_DAEMON_LOG_LEVEL);
-    }
-
-    auto logger_names = std::vector<std::string> {"main"};
-
-    setup_loggers(logger_names, level, path);
-
-    CTX->log(spdlog::get(logger_names.at(0)));
-}
-
 void log_prog_name() {
     std::string line;
     std::ifstream cmdline("/proc/self/cmdline");
     if (!cmdline.is_open()) {
-        CTX->log()->error("Unable to open cmdline file");
+        LOG(ERROR, "Unable to open cmdline file");
         throw std::runtime_error("Unable to open cmdline file");
     }
     if(!getline(cmdline, line)) {
         throw std::runtime_error("Unable to read cmdline file");
     }
     std::replace(line.begin(), line.end(), '\0', ' ');
-    CTX->log()->info("Command to itercept: '{}'", line);
+    line.erase(line.length() - 1, line.length());
+    LOG(INFO, "Process cmdline: '{}'", line);
     cmdline.close();
 }
 
@@ -221,14 +173,33 @@ void log_prog_name() {
  * Called initially ONCE when preload library is used with the LD_PRELOAD environment variable
  */
 void init_preload() {
-    init_logging();
-    CTX->log()->debug("Initialized logging subsystem");
+
+    CTX->enable_interception();
+    start_self_interception();
+
+    CTX->init_logging();
+    // from here ownwards it is safe to print messages
+    LOG(DEBUG, "Logging subsystem initialized");
+
+    // Kernel modules such as ib_uverbs may create fds in kernel space and pass
+    // them to user-space processes using ioctl()-like interfaces. if this 
+    // happens during our internal initialization, there's no way for us to 
+    // control this creation and the fd will be created in the 
+    // [0, MAX_USER_FDS) range rather than in our private 
+    // [MAX_USER_FDS, MAX_OPEN_FDS) range. To prevent this for our internal 
+    // initialization code, we forcefully occupy the user fd range to force 
+    // such modules to create fds in our private range.
+    CTX->protect_user_fds();
+
     log_prog_name();
     init_cwd();
-    CTX->log()->debug("Current working directory: '{}'", CTX->cwd());
+
+    LOG(DEBUG, "Current working directory: '{}'", CTX->cwd());
     init_ld_env_if_needed();
     CTX->enable_interception();
-    CTX->log()->debug("{}() exit", __func__);
+
+    CTX->unprotect_user_fds();
+
     start_interception();
 }
 
@@ -236,16 +207,16 @@ void init_preload() {
  * Called last when preload library is used with the LD_PRELOAD environment variable
  */
 void destroy_preload() {
+
+    CTX->clear_hosts();
+    LOG(DEBUG, "Peer information deleted");
+
+    ld_network_service.reset();
+    LOG(DEBUG, "RPC subsystem shut down");
+
     stop_interception();
     CTX->disable_interception();
-    if (ld_margo_rpc_id == nullptr) {
-        CTX->log()->debug("{}() No services in preload library used. Nothing to shut down.", __func__);
-        return;
-    }
-    cleanup_addresses();
-    CTX->log()->debug("{}() About to finalize the margo RPC client", __func__);
-    // XXX Sometimes this hangs on the cluster. Investigate.
-    margo_finalize(ld_margo_rpc_id);
-    CTX->log()->debug("{}() Shut down Margo RPC client successful", __func__);
-    CTX->log()->info("All services shut down. Client shutdown complete.");
+    LOG(DEBUG, "Syscall interception stopped");
+
+    LOG(INFO, "All subsystems shut down. Client shutdown complete.");
 }

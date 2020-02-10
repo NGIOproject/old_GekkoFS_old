@@ -1,0 +1,48 @@
+FROM debian:stable-slim
+
+LABEL Description="This is a debian based environment to build GekkoFS"
+
+ENV GKFS_PATH	/opt/gkfs
+
+ENV SCRIPTS_PATH	${GKFS_PATH}/scripts
+ENV DEPS_SRC_PATH	${GKFS_PATH}/deps_src
+ENV INSTALL_PATH	${GKFS_PATH}/build_deps
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+		git \
+		curl \
+		ca-certificates \
+		libtool \
+		pkg-config \
+		make \
+		automake \
+		cmake \
+		gcc \
+		g++ \
+		# Mercury dependencies
+		libltdl-dev \
+		lbzip2 \
+		# RocksDB
+		libsnappy-dev \
+		liblz4-dev \
+		libzstd-dev \
+		libbz2-dev \
+		zlib1g-dev \
+		# syscall_intercept dependencies
+		libcapstone-dev \
+		# GekkoFS
+		libboost-filesystem-dev \
+		libboost-program-options-dev \
+		valgrind \
+		uuid-dev \
+# Clean apt cache to reduce image layer size
+&& rm -rf /var/lib/apt/lists/*
+
+# Download dependencies source
+COPY scripts/dl_dep.sh		$SCRIPTS_PATH/
+RUN /bin/bash $SCRIPTS_PATH/dl_dep.sh $DEPS_SRC_PATH all
+
+# Compile dependencies
+COPY scripts/compile_dep.sh $SCRIPTS_PATH/
+COPY scripts/patches        $SCRIPTS_PATH/patches
+RUN /bin/bash $SCRIPTS_PATH/compile_dep.sh $DEPS_SRC_PATH $INSTALL_PATH

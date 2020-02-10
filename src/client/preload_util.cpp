@@ -12,9 +12,12 @@
 */
 
 #include <client/preload_util.hpp>
+#include <client/env.hpp>
+#include <client/logging.hpp>
 #include <global/rpc/distributor.hpp>
 #include <global/rpc/rpc_utils.hpp>
 #include <global/env_util.hpp>
+#include <hermes.hpp>
 
 #include <fstream>
 #include <sstream>
@@ -22,9 +25,6 @@
 #include <csignal>
 #include <random>
 #include <sys/sysmacros.h>
-
-#include <sys/types.h>
-#include <pwd.h>
 
 using namespace std;
 
@@ -79,7 +79,9 @@ int metadata_to_stat(const std::string& path, const Metadata& md, struct stat& a
 }
 
 vector<pair<string, string>> load_hosts_file(const std::string& lfpath) {
-    CTX->log()->debug("{}() Loading hosts file: '{}'", __func__, lfpath);
+
+    LOG(DEBUG, "Loading hosts file: \"{}\"", lfpath);
+
     ifstream lf(lfpath);
     if (!lf) {
         throw runtime_error(fmt::format("Failed to open hosts file '{}': {}",
@@ -94,8 +96,10 @@ vector<pair<string, string>> load_hosts_file(const std::string& lfpath) {
     std::smatch match;
     while (getline(lf, line)) {
         if (!regex_match(line, match, line_re)) {
-            spdlog::error("{}() Unrecognized line format: [path: '{}', line: '{}']",
-                          __func__, lfpath, line);
+
+            LOG(ERROR, "Unrecognized line format: [path: '{}', line: '{}']",
+                lfpath, line);
+
             throw runtime_error(
                     fmt::format("unrecognized line format: '{}'", line));
         }
@@ -106,43 +110,41 @@ vector<pair<string, string>> load_hosts_file(const std::string& lfpath) {
     return hosts;
 }
 
-hg_addr_t margo_addr_lookup_retry(const std::string& uri) {
-    CTX->log()->debug("{}() Lookink up address '{}'", __func__, uri);
-    // try to look up 3 times before erroring out
-    hg_return_t ret;
-    hg_addr_t remote_addr = HG_ADDR_NULL;
-    ::random_device rd; // obtain a random number from hardware
-    unsigned int attempts = 0;
+hermes::endpoint lookup_endpoint(const std::string& uri, 
+                                 std::size_t max_retries = 3) {
+
+    LOG(DEBUG, "Looking up address \"{}\"", uri);
+
+    std::random_device rd; // obtain a random number from hardware
+    std::size_t attempts = 0;
+    std::string error_msg;
+
     do {
-        ret = margo_addr_lookup(ld_margo_rpc_id, uri.c_str(), &remote_addr);
-        if (ret == HG_SUCCESS) {
-            return remote_addr;
+        try {
+            return ld_network_service->lookup(uri);
+        } catch (const exception& ex) {
+            error_msg = ex.what();
+
+            LOG(WARNING, "Failed to lookup address '{}'. Attempts [{}/{}]", 
+                uri, attempts + 1, max_retries);
+
+            // Wait a random amount of time and try again
+            std::mt19937 g(rd()); // seed the random generator
+            std::uniform_int_distribution<> distr(50, 50 * (attempts + 2)); // define the range
+            std::this_thread::sleep_for(std::chrono::milliseconds(distr(g)));
+            continue;
         }
-        CTX->log()->warn("{}() Failed to lookup address '{}'. Attempts [{}/3]", __func__, uri, attempts + 1);
-        // Wait a random amount of time and try again
-        ::mt19937 g(rd()); // seed the random generator
-        ::uniform_int_distribution<> distr(50, 50 * (attempts + 2)); // define the range
-        ::this_thread::sleep_for(std::chrono::milliseconds(distr(g)));
-    } while (++attempts < 3);
-    throw runtime_error(
-            fmt::format("Failed to lookup address '{}', error: {}", uri, HG_Error_to_string(ret)));
+    } while (++attempts < max_retries);
+
+    throw std::runtime_error(
+            fmt::format("Endpoint for address '{}' could not be found ({})", 
+                        uri, error_msg));
 }
 
 void load_hosts() {
     string hosts_file;
-    char* homedir = NULL;
-	struct passwd *pw = getpwuid(getuid());
-    if (pw)
- 	  homedir = pw->pw_dir;
 
-    try {
-        hosts_file = gkfs::get_env_own("HOSTS_FILE");
-    } catch (const exception& e) {
-	hosts_file = string(homedir)+"/gkfs_hosts.txt"s;
-	CTX->log()->info("{}() Failed to get hosts file path"
-                         " from environment, using default: '{}'",
-                         __func__, hosts_file);
-    }
+    hosts_file = gkfs::env::get_var(gkfs::env::HOSTS_FILE, DEFAULT_HOSTS_FILE);
 
     vector<pair<string, string>> hosts;
     try {
@@ -156,11 +158,13 @@ void load_hosts() {
         throw runtime_error(fmt::format("Host file empty: '{}'", hosts_file));
     }
 
-    CTX->log()->info("{}() Hosts pool size: {}", __func__, hosts.size());
+    LOG(INFO, "Hosts pool size: {}", hosts.size());
 
     auto local_hostname = get_my_hostname(true);
     bool local_host_found = false;
-    vector<hg_addr_t> addrs(hosts.size());
+
+    std::vector<hermes::endpoint> addrs;
+    addrs.resize(hosts.size());
 
     vector<uint64_t> host_ids(hosts.size());
     // populate vector with [0, ..., host_size - 1]
@@ -177,51 +181,24 @@ void load_hosts() {
     // lookup addresses and put abstract server addresses into rpc_addressesre
 
     for (const auto& id: host_ids) {
-        const auto& hostname = hosts.at(id).first;
-        const auto& uri = hosts.at(id).second;
-        auto addr = margo_addr_lookup_retry(uri);
-        addrs.at(id) = addr;
+         const auto& hostname = hosts.at(id).first;
+         const auto& uri = hosts.at(id).second;
+
+        addrs[id] = ::lookup_endpoint(uri);
 
         if (!local_host_found && hostname == local_hostname) {
-            CTX->log()->debug("{}() Found local host: {}", __func__, hostname);
+            LOG(DEBUG, "Found local host: {}", hostname);
             CTX->local_host_id(id);
             local_host_found = true;
         }
+
+        LOG(DEBUG, "Found peer: {}", addrs[id].to_string()); 
     }
 
     if (!local_host_found) {
-        CTX->log()->warn("{}() Failed to find local host."
-                            "Fallback: use host id '0' as local host", __func__);
+        LOG(WARNING, "Failed to find local host. Using host '0' as local host");
         CTX->local_host_id(0);
     }
+
     CTX->hosts(addrs);
-}
-
-void cleanup_addresses() {
-    for (auto& addr: CTX->hosts()) {
-        margo_addr_free(ld_margo_rpc_id, addr);
-    }
-}
-
-
-
-hg_return
-margo_create_wrap_helper(const hg_id_t rpc_id, uint64_t recipient, hg_handle_t& handle) {
-    auto ret = margo_create(ld_margo_rpc_id, CTX->hosts().at(recipient), rpc_id, &handle);
-    if (ret != HG_SUCCESS) {
-        CTX->log()->error("{}() creating handle FAILED", __func__);
-        return HG_OTHER_ERROR;
-    }
-    return ret;
-}
-
-/**
- * Wraps certain margo functions to create a Mercury handle
- * @param path
- * @param handle
- * @return
- */
-hg_return margo_create_wrap(const hg_id_t rpc_id, const std::string& path, hg_handle_t& handle) {
-    auto recipient = CTX->distributor()->locate_file_metadata(path);
-    return margo_create_wrap_helper(rpc_id, recipient, handle);
 }

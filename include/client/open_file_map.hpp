@@ -44,7 +44,7 @@ class OpenFile {
 protected:
     FileType type_;
     std::string path_;
-    std::array<bool, static_cast<int>(OpenFile_flags::flag_count)> flags_ = {false};
+    std::array<bool, static_cast<int>(OpenFile_flags::flag_count)> flags_ = {{false}};
     unsigned long pos_;
     std::mutex pos_mutex_;
     std::mutex flag_mutex_;

@@ -14,6 +14,7 @@
 #ifndef IFS_HOOKS_HPP
 #define IFS_HOOKS_HPP
 
+#include <sys/types.h>
 #include <fcntl.h>
 
 
@@ -41,6 +42,7 @@ int hook_dup(unsigned int fd);
 int hook_dup2(unsigned int oldfd, unsigned int newfd);
 int hook_dup3(unsigned int oldfd, unsigned int newfd, int flags);
 int hook_getdents(unsigned int fd, struct linux_dirent *dirp, unsigned int count);
+int hook_getdents64(unsigned int fd, struct linux_dirent64 *dirp, unsigned int count);
 int hook_mkdirat(int dirfd, const char * cpath, mode_t mode);
 int hook_fchmodat(int dirfd, const char* path, mode_t mode);
 int hook_fchmod(unsigned int dirfd, mode_t mode);

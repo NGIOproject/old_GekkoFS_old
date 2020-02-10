@@ -17,8 +17,9 @@
 
 #define RPC_PROTOCOL "@RPC_PROTOCOL@"
 #cmakedefine01 USE_SHM
+#cmakedefine01 CREATE_CHECK_PARENTS
 
-#define CHUNKSIZE 512*1024 // in bytes 512KB
+#define CHUNKSIZE 524288 // in bytes 512KB
 
 // What metadata is used
 #define MDATA_USE_ATIME false
@@ -46,9 +47,9 @@
  * Indicates the number of concurrent progress to drive I/O operations of chunk files to and from local file systems
  * The value is directly mapped to created Argobots xstreams, controlled in a single pool with ABT_snoozer scheduler
  */
-#define DAEMON_IO_XSTREAMS 4
+#define DAEMON_IO_XSTREAMS 8
 // Number of threads used for RPC handlers at the daemon
-#define DAEMON_RPC_HANDLER_XSTREAMS 4
+#define DAEMON_RPC_HANDLER_XSTREAMS 8
 #define DEFAULT_RPC_PORT 4433
 #define RPC_TRIES 3
 // rpc timeout to try again in milliseconds
@@ -57,16 +58,19 @@
 #define DEFAULT_HOSTS_FILE "./gkfs_hosts.txt"
 
 //size of preallocated buffer to hold directory entries in rpc call
-#define RPC_DIRENTS_BUFF_SIZE (1024 * 1024 * 1024) // 8 mega
+#define RPC_DIRENTS_BUFF_SIZE (8 * 1024 * 1024) // 8 mega
 
 // environment prefixes
-#define ENV_PREFIX "GKFS_"
+#define CLIENT_ENV_PREFIX "LIBGKFS_"
+#define DAEMON_ENV_PREFIX "GKFS_"
 
 // Log
-#define DEFAULT_PRELOAD_LOG_PATH "/tmp/gkfs_preload.log"
+#define DEFAULT_CLIENT_LOG_PATH "/tmp/gkfs_client.log"
 #define DEFAULT_DAEMON_LOG_PATH "/tmp/gkfs_daemon.log"
 
-#define DEFAULT_PRELOAD_LOG_LEVEL 4 // info
+#define DEFAULT_CLIENT_LOG_LEVEL "info,errors,critical,mercury"
 #define DEFAULT_DAEMON_LOG_LEVEL 4 // info
+
+#cmakedefine01 LOG_SYSCALLS
 
 #endif //FS_CONFIGURE_H

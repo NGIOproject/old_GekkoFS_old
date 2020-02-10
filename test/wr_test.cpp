@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
         cerr << "Error reading file" << endl;
         return -1;
     }
-    
+
     nr = read(fd, buffOut, 1 );
     if(nr != 0){
         cerr << "Error reading at end of file" << endl;

@@ -22,10 +22,6 @@
 #include <iostream>
 #include <map>
 
-extern "C" {
-#include <margo.h>
-}
-
 struct MetadentryUpdateFlags {
     bool atime = false;
     bool mtime = false;
@@ -39,8 +35,10 @@ struct MetadentryUpdateFlags {
     bool path = false;
 };
 
-// Margo instances
-extern margo_instance_id ld_margo_rpc_id;
+// Hermes instance
+namespace hermes { class async_engine; }
+extern std::unique_ptr<hermes::async_engine> ld_network_service;
+
 // RPC IDs
 extern hg_id_t rpc_config_id;
 extern hg_id_t rpc_mk_node_id;
@@ -71,14 +69,5 @@ hg_addr_t get_local_addr();
 
 void load_hosts();
 bool lookup_all_hosts();
-
-void cleanup_addresses();
-
-hg_return margo_create_wrap_helper(const hg_id_t rpc_id, uint64_t recipient,
-                                   hg_handle_t& handle);
-
-hg_return margo_create_wrap(const hg_id_t rpc_id, const std::string&,
-                            hg_handle_t& handle);
-
 
 #endif //IFS_PRELOAD_UTIL_HPP

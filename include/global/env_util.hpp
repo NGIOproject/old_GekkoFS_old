@@ -11,16 +11,19 @@
   SPDX-License-Identifier: MIT
 */
 
-#ifndef GKFS_ENV_UTIL_HPP
-#define GKFS_ENV_UTIL_HPP
+#ifndef GKFS_COMMON_ENV_UTIL_HPP
+#define GKFS_COMMON_ENV_UTIL_HPP
 
 #include <string>
 
 namespace gkfs {
+namespace env {
 
-std::string get_env(const std::string& env_name);
-std::string get_env_own(const std::string& env_name);
+std::string
+get_var(const std::string& name, 
+        const std::string& default_value = "");
 
-}
+} // namespace env
+} // namespace gkfs
 
-#endif //IFS_ENV_UTIL_HPP
+#endif // GKFS_COMMON_ENV_UTIL_HPP

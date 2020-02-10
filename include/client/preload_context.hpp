@@ -14,16 +14,22 @@
 #ifndef IFS_PRELOAD_CTX_HPP
 #define IFS_PRELOAD_CTX_HPP
 
-#include <spdlog/spdlog.h>
+#include <hermes.hpp>
 #include <map>
 #include <mercury.h>
 #include <memory>
 #include <vector>
 #include <string>
 
+#include <bitset>
+
 /* Forward declarations */
 class OpenFileMap;
 class Distributor;
+
+namespace gkfs { namespace log {
+    struct logger;
+}}
 
 
 struct FsConfig {
@@ -49,10 +55,13 @@ enum class RelativizeStatus {
 };
 
 class PreloadContext {
+
+    static auto constexpr MIN_INTERNAL_FD = MAX_OPEN_FDS - MAX_INTERNAL_FDS;
+    static auto constexpr MAX_USER_FDS = MIN_INTERNAL_FD;
+
     private:
     PreloadContext();
 
-    std::shared_ptr<spdlog::logger> log_;
     std::shared_ptr<OpenFileMap> ofm_;
     std::shared_ptr<Distributor> distributor_;
     std::shared_ptr<FsConfig> fs_conf_;
@@ -61,10 +70,15 @@ class PreloadContext {
     std::vector<std::string> mountdir_components_;
     std::string mountdir_;
 
-    std::vector<hg_addr_t> hosts_;
+    std::vector<hermes::endpoint> hosts_;
     uint64_t local_host_id_;
 
     bool interception_enabled_;
+
+    std::bitset<MAX_INTERNAL_FDS> internal_fds_;
+    mutable std::mutex internal_fds_mutex_;
+    bool internal_fds_must_relocate_;
+    std::bitset<MAX_USER_FDS> protected_fds_;
 
     public:
     static PreloadContext* getInstance() {
@@ -75,9 +89,7 @@ class PreloadContext {
     PreloadContext(PreloadContext const&) = delete;
     void operator=(PreloadContext const&) = delete;
 
-    void log(std::shared_ptr<spdlog::logger> logger);
-    std::shared_ptr<spdlog::logger> log() const;
-
+    void init_logging();
     void mountdir(const std::string& path);
     const std::string& mountdir() const;
     const std::vector<std::string>& mountdir_components() const;
@@ -85,8 +97,10 @@ class PreloadContext {
     void cwd(const std::string& path);
     const std::string& cwd() const;
 
-    const std::vector<hg_addr_t>& hosts() const;
-    void hosts(const std::vector<hg_addr_t>& addrs);
+    const std::vector<hermes::endpoint>& hosts() const;
+    void hosts(const std::vector<hermes::endpoint>& addrs);
+    void clear_hosts();
+
 
     uint64_t local_host_id() const;
     void local_host_id(uint64_t id);
@@ -106,6 +120,13 @@ class PreloadContext {
     void enable_interception();
     void disable_interception();
     bool interception_enabled() const;
+
+    int register_internal_fd(int fd);
+    void unregister_internal_fd(int fd);
+    bool is_internal_fd(int fd) const;
+
+    void protect_user_fds();
+    void unprotect_user_fds(); 
 };
 
 

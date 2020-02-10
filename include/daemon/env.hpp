@@ -11,20 +11,24 @@
   SPDX-License-Identifier: MIT
 */
 
-#include <string>
-#include <cstdlib>
-#include <global/env_util.hpp>
+#ifndef GKFS_DAEMON_ENV
+#define GKFS_DAEMON_ENV
 
+#include <global/configure.hpp>
+
+#define ADD_PREFIX(str) DAEMON_ENV_PREFIX str
+
+/* Environment variables for the GekkoFS daemon */
 namespace gkfs {
 namespace env {
 
-std::string
-get_var(const std::string& name, 
-        const std::string& default_value) {
-
-    const char* const val = ::secure_getenv(name.c_str());
-    return val != nullptr ? std::string(val) : default_value;
-}
+static constexpr auto HOSTS_FILE = ADD_PREFIX("HOSTS_FILE");
 
 } // namespace env
 } // namespace gkfs
+
+#undef ADD_PREFIX
+
+#endif // GKFS_DAEMON_ENV
+
+

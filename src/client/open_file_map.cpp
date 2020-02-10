@@ -17,6 +17,7 @@
 #include <client/open_file_map.hpp>
 #include <client/open_dir.hpp>
 #include <client/preload.hpp>
+#include <client/logging.hpp>
 
 using namespace std;
 
@@ -143,7 +144,7 @@ bool OpenFileMap::remove(const int fd) {
     files_.erase(fd);
     if (fd_validation_needed && files_.empty()) {
         fd_validation_needed = false;
-        CTX->log()->info("{}() fd_validation flag reset", __func__);
+        LOG(DEBUG, "fd_validation flag reset");
     }
     return true;
 }
@@ -188,7 +189,7 @@ int OpenFileMap::generate_fd_idx() {
     // We need a mutex here for thread safety
     std::lock_guard<std::mutex> inode_lock(fd_idx_mutex);
     if (fd_idx == std::numeric_limits<int>::max()) {
-        CTX->log()->info("{}() File descriptor index exceeded ints max value. Setting it back to 100000", __func__);
+        LOG(WARNING, "File descriptor index exceeded ints max value. Setting it back to 100000");
         /*
          * Setting fd_idx back to 3 could have the effect that fd are given twice for different path.
          * This must not happen. Instead a flag is set which tells can tell the OpenFileMap that it should check

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.6)
 
 project(
     GekkoFS
-    VERSION 0.6.0
+    VERSION 0.7.0
 )
 
 
@@ -22,14 +22,18 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release
             CACHE STRING "Choose the type of build: Debug Release Memcheck" FORCE)
 ENDIF (NOT CMAKE_BUILD_TYPE)
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "[gekkofs] Build type: ${CMAKE_BUILD_TYPE}")
 
 # Compiler flags for various cmake build types
-set(WARNINGS_FLAGS "-Wall -Wextra --pedantic -Wno-unused-parameter")
+set(WARNINGS_FLAGS "-Wall -Wextra --pedantic -Wno-unused-parameter -Wno-missing-field-initializers")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG -O3")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${WARNINGS_FLAGS} -g -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${WARNINGS_FLAGS} -g -O0 -DGKFS_DEBUG_BUILD -DHERMES_DEBUG_BUILD")
 set(CMAKE_CXX_FLAGS_MEMCHECK "${WARNINGS_FLAGS} -g -O0 -fsanitize=address -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_MAINTAINER "${WARNINGS_FLAGS} -g -O0 -pg -no-pie")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -DNDEBUG -O3")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${WARNINGS_FLAGS} -g -O0 -DGKFS_DEBUG_BUILD")
+set(CMAKE_C_FLAGS_MEMCHECK "${WARNINGS_FLAGS} -g -O0 -fsanitize=address -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS_MAINTAINER "${WARNINGS_FLAGS} -g -O0 -pg -no-pie")
 mark_as_advanced(CMAKE_CXX_FLAGS_MAINTAINER)
 
 # Project version
@@ -60,7 +64,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
         endif()
     endif()
 endif()
-message(STATUS "Project version: ${PROJECT_VERSION}")
+message(STATUS "[gekkofs] Project version: ${PROJECT_VERSION}")
 set(GKFS_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(GKFS_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(GKFS_VERSION_PATCH ${PROJECT_VERSION_PATCH})
@@ -94,23 +98,53 @@ find_package(Boost 1.53 REQUIRED
 
 find_package(Threads REQUIRED)
 
-set(RPC_PROTOCOL "ofi+tcp" CACHE STRING "Communication plugin used for RPCs")
+find_package(Date REQUIRED)
+
+set(RPC_PROTOCOL "ofi+sockets" CACHE STRING "Communication plugin used for RPCs")
 set_property(CACHE RPC_PROTOCOL PROPERTY STRINGS
    "bmi+tcp"
+   "ofi+sockets"
    "ofi+tcp"
    "ofi+verbs"
    "ofi+psm2"
 )
-message(STATUS "RPC protocol: '${RPC_PROTOCOL}'")
+message(STATUS "[gekkofs] RPC protocol: '${RPC_PROTOCOL}'")
 
-option(USE_SHM "Use shared memory for intra-node communication" ON)
-message(STATUS "Shared-memory communication: ${USE_SHM}")
+option(USE_SHM "Use shared memory for intra-node communication" OFF)
+message(STATUS "[gekkofs] Shared-memory communication: ${USE_SHM}")
+
+option(CREATE_CHECK_PARENTS "Check parent directory existance before creating child node" ON)
+message(STATUS "Create checks parents: ${CREATE_CHECK_PARENTS}")
 
 option(SYMLINK_SUPPORT "Compile with support for symlinks" ON)
 if(SYMLINK_SUPPORT)
     add_definitions(-DHAS_SYMLINKS)
 endif()
-message(STATUS "Symlink support: ${SYMLINK_SUPPORT}")
+message(STATUS "[gekkofs] Symlink support: ${SYMLINK_SUPPORT}")
+
+set(MAX_INTERNAL_FDS 256 CACHE STRING "Number of file descriptors reserved for internal use")
+add_definitions(-DMAX_INTERNAL_FDS=${MAX_INTERNAL_FDS})
+message(STATUS "[gekkofs] File descriptors reserved for internal use: ${MAX_INTERNAL_FDS}")
+
+execute_process(COMMAND getconf OPEN_MAX
+                OUTPUT_VARIABLE GETCONF_MAX_FDS
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET)
+if(NOT GETCONF_MAX_FDS)
+    set(GETCONF_MAX_FDS=512)
+endif()
+add_definitions(-DMAX_OPEN_FDS=${GETCONF_MAX_FDS})
+
+option(ENABLE_CLIENT_LOG "Enable logging messages" ON)
+if(ENABLE_CLIENT_LOG)
+    add_definitions(-DGKFS_ENABLE_LOGGING)
+endif()
+message(STATUS "[gekkofs] Client logging output: ${ENABLE_CLIENT_LOG}")
+
+set(CLIENT_LOG_MESSAGE_SIZE 1024 CACHE STRING "Maximum size of a log message in the client library")
+add_definitions(-DLIBGKFS_LOG_MESSAGE_SIZE=${CLIENT_LOG_MESSAGE_SIZE})
+message(STATUS "[gekkofs] Maximum log message size in the client library: ${CLIENT_LOG_MESSAGE_SIZE}")
+mark_as_advanced(CLIENT_LOG_MESSAGE_SIZE)
 
 configure_file(include/global/configure.hpp.in include/global/configure.hpp)
 
@@ -146,12 +180,18 @@ set_target_properties(spdlog
     INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/external"
 )
 
-add_library(fmt INTERFACE)
-# we cannot use target_include_directories with CMake < 3.11
-set_target_properties(fmt
-    PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/external/spdlog"
-)
+add_subdirectory(external/fmt)
+set_property(TARGET fmt PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+if(ENABLE_CLIENT_LOG)
+    option(HERMES_LOGGING "" ON)
+    option(HERMES_LOGGING_FMT_USE_BUNDLED "" OFF)
+    option(HERMES_LOGGING_FMT_HEADER_ONLY "" OFF)
+endif()
+
+option(HERMES_MARGO_COMPATIBLE_RPCS "" ON)
+add_subdirectory(external/hermes)
+target_compile_definitions(hermes INTERFACE)
 
 set(INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
 
