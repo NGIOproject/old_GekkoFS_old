@@ -1,0 +1,6 @@
+[submodule "external/hermes"]
+	path = external/hermes
+	url = https://github.com/bsc-ssrg/hermes.git
+[submodule "external/fmt"]
+	path = external/fmt
+	url = https://github.com/fmtlib/fmt
