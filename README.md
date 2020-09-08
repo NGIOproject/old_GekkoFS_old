@@ -1,3 +1,11 @@
+
+| :warning: WARNING :warning:          |
+|:-------------------------------------|
+| *At the moment, this repository is only used for the purpose of publishing stable releases of GekkoFS. Please refer to the [official SSEC GitLab<sup>1</sup>](https://storage.bsc.es/gitlab/hpc/gekkofs) to report any issues, contribute PR or just to find the latest development version of GekkoFS.* |
+|<sup>1</sup>Information on how to get an SSEC collaborator account can be found [here](https://storage.bsc.es/helpdesk/). |
+
+
+
 # GekkoFS
 This is a file system.
 
