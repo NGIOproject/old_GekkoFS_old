@@ -25,6 +25,7 @@ target_sources(env_util
     PUBLIC
     ${INCLUDE_DIR}/global/env_util.hpp
     PRIVATE
+    ${INCLUDE_DIR}/config.hpp
     ${CMAKE_CURRENT_LIST_DIR}/env_util.cpp
     )
 

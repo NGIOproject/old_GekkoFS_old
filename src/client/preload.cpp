@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -11,52 +11,41 @@
   SPDX-License-Identifier: MIT
 */
 
-#include <global/env_util.hpp>
-#include <global/path_util.hpp>
-#include <global/global_defs.hpp>
-#include <global/configure.hpp>
 #include <client/preload.hpp>
-#include <client/resolve.hpp>
-#include <global/rpc/distributor.hpp>
-#include "global/rpc/rpc_types.hpp"
+#include <client/path.hpp>
 #include <client/logging.hpp>
-#include <client/rpc/ld_rpc_management.hpp>
+#include <client/rpc/forward_management.hpp>
 #include <client/preload_util.hpp>
 #include <client/intercept.hpp>
-#include <client/rpc/hg_rpcs.hpp>
-#include <hermes.hpp>
 
-#include <sys/types.h>
-#include <dirent.h>
-#include <stdarg.h>
+#include <global/rpc/distributor.hpp>
+#include <global/global_defs.hpp>
 
 #include <fstream>
 
+#include <hermes.hpp>
+
+extern "C" {
+#include <sys/types.h>
+}
 
 using namespace std;
 
+std::unique_ptr<hermes::async_engine> ld_network_service; // extern variable
+
+namespace {
 // make sure that things are only initialized once
-static pthread_once_t init_env_thread = PTHREAD_ONCE_INIT;
+pthread_once_t init_env_thread = PTHREAD_ONCE_INIT;
 
-// RPC IDs
-hg_id_t rpc_config_id;
-hg_id_t rpc_mk_node_id;
-hg_id_t rpc_stat_id;
-hg_id_t rpc_rm_node_id;
-hg_id_t rpc_decr_size_id;
-hg_id_t rpc_update_metadentry_id;
-hg_id_t rpc_get_metadentry_size_id;
-hg_id_t rpc_update_metadentry_size_id;
-hg_id_t rpc_mk_symlink_id;
-hg_id_t rpc_write_data_id;
-hg_id_t rpc_read_data_id;
-hg_id_t rpc_trunc_data_id;
-hg_id_t rpc_get_dirents_id;
-hg_id_t rpc_chunk_stat_id;
+#ifdef GKFS_ENABLE_FORWARDING
+pthread_t mapper;
+bool forwarding_running;
 
-std::unique_ptr<hermes::async_engine> ld_network_service;
+pthread_mutex_t remap_mutex;
+pthread_cond_t remap_signal;
+#endif
 
-static inline void exit_error_msg(int errcode, const string& msg) {
+inline void exit_error_msg(int errcode, const string& msg) {
 
     LOG_ERROR("{}", msg);
     gkfs::log::logger::log_message(stderr, "{}\n", msg);
@@ -64,55 +53,36 @@ static inline void exit_error_msg(int errcode, const string& msg) {
     // if we don't disable interception before calling ::exit()
     // syscall hooks may find an inconsistent in shared state
     // (e.g. the logger) and thus, crash
-    stop_interception();
+    gkfs::preload::stop_interception();
     CTX->disable_interception();
     ::exit(errcode);
 }
 
 /**
  * Initializes the Hermes client for a given transport prefix
- * @param transport_prefix
- * @return true if succesfully initialized; false otherwise
+ * @return true if successfully initialized; false otherwise
  */
-bool init_hermes_client(const std::string& transport_prefix) {
+bool init_hermes_client() {
 
     try {
 
         hermes::engine_options opts{};
 
-#if USE_SHM
-        opts |= hermes::use_auto_sm;
-#endif
+        if (CTX->auto_sm())
+            opts |= hermes::use_auto_sm;
+        if (gkfs::rpc::protocol::ofi_psm2 == CTX->rpc_protocol()) {
+            opts |= hermes::force_no_block_progress;
+        }
 
-        ld_network_service = 
-            std::make_unique<hermes::async_engine>(
-                    hermes::get_transport_type(transport_prefix), opts);
+        ld_network_service =
+                std::make_unique<hermes::async_engine>(
+                        hermes::get_transport_type(CTX->rpc_protocol()), opts);
         ld_network_service->run();
     } catch (const std::exception& ex) {
-        fmt::print(stderr, "Failed to initialize Hermes RPC client {}\n", 
+        fmt::print(stderr, "Failed to initialize Hermes RPC client {}\n",
                    ex.what());
         return false;
     }
-
-    rpc_config_id = gkfs::rpc::fs_config::public_id;
-    rpc_mk_node_id = gkfs::rpc::create::public_id;
-    rpc_stat_id = gkfs::rpc::stat::public_id;
-    rpc_rm_node_id = gkfs::rpc::remove::public_id;
-    rpc_decr_size_id = gkfs::rpc::decr_size::public_id;
-    rpc_update_metadentry_id = gkfs::rpc::update_metadentry::public_id;
-    rpc_get_metadentry_size_id = gkfs::rpc::get_metadentry_size::public_id;
-    rpc_update_metadentry_size_id = gkfs::rpc::update_metadentry::public_id;
-
-#ifdef HAS_SYMLINKS
-    rpc_mk_symlink_id = gkfs::rpc::mk_symlink::public_id;
-#endif // HAS_SYMLINKS
-
-    rpc_write_data_id = gkfs::rpc::write_data::public_id;
-    rpc_read_data_id = gkfs::rpc::read_data::public_id;
-    rpc_trunc_data_id = gkfs::rpc::trunc_data::public_id;
-    rpc_get_dirents_id = gkfs::rpc::get_dirents::public_id;
-    rpc_chunk_stat_id = gkfs::rpc::chunk_stat::public_id;
-
     return true;
 }
 
@@ -122,36 +92,101 @@ bool init_hermes_client(const std::string& transport_prefix) {
  */
 void init_ld_environment_() {
 
-    // initialize Hermes interface to Mercury
-    LOG(INFO, "Initializing RPC subsystem...");
-
-    if (!init_hermes_client(RPC_PROTOCOL)) {
-        exit_error_msg(EXIT_FAILURE, "Unable to initialize RPC subsystem");
-    }
-
+    vector<pair<string, string>> hosts{};
     try {
         LOG(INFO, "Loading peer addresses...");
-        load_hosts();
+        hosts = gkfs::util::read_hosts_file();
     } catch (const std::exception& e) {
         exit_error_msg(EXIT_FAILURE, "Failed to load hosts addresses: "s + e.what());
     }
 
+    // initialize Hermes interface to Mercury
+    LOG(INFO, "Initializing RPC subsystem...");
+
+    if (!init_hermes_client()) {
+        exit_error_msg(EXIT_FAILURE, "Unable to initialize RPC subsystem");
+    }
+
+    try {
+        gkfs::util::connect_to_hosts(hosts);
+    } catch (const std::exception& e) {
+        exit_error_msg(EXIT_FAILURE, "Failed to connect to hosts: "s + e.what());
+    }
+
     /* Setup distributor */
-    auto simple_hash_dist = std::make_shared<SimpleHashDistributor>(CTX->local_host_id(), CTX->hosts().size());
+#ifdef GKFS_ENABLE_FORWARDING
+    try {
+        gkfs::util::load_forwarding_map();
+
+        LOG(INFO, "{}() Forward to {}", __func__, CTX->fwd_host_id());
+    } catch (std::exception& e){
+        exit_error_msg(EXIT_FAILURE, fmt::format("Unable set the forwarding host '{}'", e.what()));
+    }
+    
+    auto forwarder_dist = std::make_shared<gkfs::rpc::ForwarderDistributor>(CTX->fwd_host_id(), CTX->hosts().size());
+    CTX->distributor(forwarder_dist);
+#else
+    auto simple_hash_dist = std::make_shared<gkfs::rpc::SimpleHashDistributor>(CTX->local_host_id(),
+                                                                               CTX->hosts().size());
     CTX->distributor(simple_hash_dist);
+#endif
 
     LOG(INFO, "Retrieving file system configuration...");
 
-    if (!rpc_send::get_fs_config()) {
+    if (!gkfs::rpc::forward_get_fs_config()) {
         exit_error_msg(EXIT_FAILURE, "Unable to fetch file system configurations from daemon process through RPC.");
     }
 
     LOG(INFO, "Environment initialization successful.");
 }
 
-void init_ld_env_if_needed() {
-    pthread_once(&init_env_thread, init_ld_environment_);
+#ifdef GKFS_ENABLE_FORWARDING
+void *forwarding_mapper(void* p) {
+    struct timespec timeout;
+    clock_gettime(CLOCK_REALTIME, &timeout);
+    timeout.tv_sec += 10; // 10 seconds
+
+    int previous = -1;
+
+    while (forwarding_running) {
+        try {
+            gkfs::util::load_forwarding_map();
+
+            if (previous != CTX->fwd_host_id()) {
+                LOG(INFO, "{}() Forward to {}", __func__, CTX->fwd_host_id());
+
+                previous = CTX->fwd_host_id();
+            }
+        } catch (std::exception& e) {
+            exit_error_msg(EXIT_FAILURE, fmt::format("Unable set the forwarding host '{}'", e.what()));
+        }
+
+        pthread_mutex_lock(&remap_mutex);
+        pthread_cond_timedwait(&remap_signal, &remap_mutex, &timeout);
+        pthread_mutex_unlock(&remap_mutex);
+    }
+
+    return nullptr;
 }
+#endif
+
+#ifdef GKFS_ENABLE_FORWARDING
+void init_forwarding_mapper() {
+    forwarding_running = true;
+
+    pthread_create(&mapper, NULL, forwarding_mapper, NULL);
+}
+#endif
+
+#ifdef GKFS_ENABLE_FORWARDING
+void destroy_forwarding_mapper() {
+    forwarding_running = false;
+
+    pthread_cond_signal(&remap_signal);
+
+    pthread_join(mapper, NULL);
+}
+#endif
 
 void log_prog_name() {
     std::string line;
@@ -160,7 +195,7 @@ void log_prog_name() {
         LOG(ERROR, "Unable to open cmdline file");
         throw std::runtime_error("Unable to open cmdline file");
     }
-    if(!getline(cmdline, line)) {
+    if (!getline(cmdline, line)) {
         throw std::runtime_error("Unable to read cmdline file");
     }
     std::replace(line.begin(), line.end(), '\0', ' ');
@@ -169,13 +204,27 @@ void log_prog_name() {
     cmdline.close();
 }
 
+} // namespace
+
+namespace gkfs {
+namespace preload {
+
+void init_ld_env_if_needed() {
+    pthread_once(&init_env_thread, init_ld_environment_);
+}
+
+} // namespace preload
+} // namespace gkfs
+
 /**
  * Called initially ONCE when preload library is used with the LD_PRELOAD environment variable
  */
 void init_preload() {
+    // The original errno value will be restored after initialization to not leak internal error codes
+    auto oerrno = errno;
 
     CTX->enable_interception();
-    start_self_interception();
+    gkfs::preload::start_self_interception();
 
     CTX->init_logging();
     // from here ownwards it is safe to print messages
@@ -192,21 +241,29 @@ void init_preload() {
     CTX->protect_user_fds();
 
     log_prog_name();
-    init_cwd();
+    gkfs::path::init_cwd();
 
     LOG(DEBUG, "Current working directory: '{}'", CTX->cwd());
-    init_ld_env_if_needed();
+    gkfs::preload::init_ld_env_if_needed();
     CTX->enable_interception();
 
     CTX->unprotect_user_fds();
 
-    start_interception();
+#ifdef GKFS_ENABLE_FORWARDING
+    init_forwarding_mapper();
+#endif
+
+    gkfs::preload::start_interception();
+    errno = oerrno;
 }
 
 /**
  * Called last when preload library is used with the LD_PRELOAD environment variable
  */
 void destroy_preload() {
+#ifdef GKFS_ENABLE_FORWARDING
+    destroy_forwarding_mapper();
+#endif
 
     CTX->clear_hosts();
     LOG(DEBUG, "Peer information deleted");
@@ -214,7 +271,7 @@ void destroy_preload() {
     ld_network_service.reset();
     LOG(DEBUG, "RPC subsystem shut down");
 
-    stop_interception();
+    gkfs::preload::stop_interception();
     CTX->disable_interception();
     LOG(DEBUG, "Syscall interception stopped");
 

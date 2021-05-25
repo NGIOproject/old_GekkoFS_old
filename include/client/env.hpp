@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -14,7 +14,7 @@
 #ifndef GKFS_CLIENT_ENV
 #define GKFS_CLIENT_ENV
 
-#include <global/configure.hpp>
+#include <config.hpp>
 
 #define ADD_PREFIX(str) CLIENT_ENV_PREFIX str
 
@@ -33,6 +33,9 @@ static constexpr auto LOG_OUTPUT          = ADD_PREFIX("LOG_OUTPUT");
 static constexpr auto LOG_OUTPUT_TRUNC    = ADD_PREFIX("LOG_OUTPUT_TRUNC");
 static constexpr auto CWD                 = ADD_PREFIX("CWD");
 static constexpr auto HOSTS_FILE          = ADD_PREFIX("HOSTS_FILE");
+#ifdef GKFS_ENABLE_FORWARDING
+static constexpr auto FORWARDING_MAP_FILE = ADD_PREFIX("FORWARDING_MAP_FILE");
+#endif
 
 } // namespace env
 } // namespace gkfs

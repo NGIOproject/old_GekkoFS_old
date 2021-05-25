@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.6)
 
 project(
     GekkoFS
-    VERSION 0.7.0
+    VERSION 0.8.0
 )
 
+enable_testing()
 
 if(NOT CMAKE_COMPILER_IS_GNUCC)
     message(FATAL_ERROR "The choosen C compiler is not gcc and is not supported")
@@ -100,21 +101,8 @@ find_package(Threads REQUIRED)
 
 find_package(Date REQUIRED)
 
-set(RPC_PROTOCOL "ofi+sockets" CACHE STRING "Communication plugin used for RPCs")
-set_property(CACHE RPC_PROTOCOL PROPERTY STRINGS
-   "bmi+tcp"
-   "ofi+sockets"
-   "ofi+tcp"
-   "ofi+verbs"
-   "ofi+psm2"
-)
-message(STATUS "[gekkofs] RPC protocol: '${RPC_PROTOCOL}'")
-
-option(USE_SHM "Use shared memory for intra-node communication" OFF)
-message(STATUS "[gekkofs] Shared-memory communication: ${USE_SHM}")
-
 option(CREATE_CHECK_PARENTS "Check parent directory existance before creating child node" ON)
-message(STATUS "Create checks parents: ${CREATE_CHECK_PARENTS}")
+message(STATUS "[gekkofs] Create checks parents: ${CREATE_CHECK_PARENTS}")
 
 option(SYMLINK_SUPPORT "Compile with support for symlinks" ON)
 if(SYMLINK_SUPPORT)
@@ -141,12 +129,19 @@ if(ENABLE_CLIENT_LOG)
 endif()
 message(STATUS "[gekkofs] Client logging output: ${ENABLE_CLIENT_LOG}")
 
+option(GKFS_ENABLE_FORWARDING "Enable forwarding mode" OFF)
+option(GKFS_ENABLE_AGIOS "Enable AGIOS scheduling library" OFF)
+if (GKFS_ENABLE_AGIOS)
+    find_package(AGIOS REQUIRED)
+endif ()
+
+
 set(CLIENT_LOG_MESSAGE_SIZE 1024 CACHE STRING "Maximum size of a log message in the client library")
 add_definitions(-DLIBGKFS_LOG_MESSAGE_SIZE=${CLIENT_LOG_MESSAGE_SIZE})
 message(STATUS "[gekkofs] Maximum log message size in the client library: ${CLIENT_LOG_MESSAGE_SIZE}")
 mark_as_advanced(CLIENT_LOG_MESSAGE_SIZE)
 
-configure_file(include/global/configure.hpp.in include/global/configure.hpp)
+configure_file(include/global/cmake_configure.hpp.in include/global/cmake_configure.hpp)
 
 # Imported target
 add_library(RocksDB INTERFACE IMPORTED GLOBAL)
@@ -202,6 +197,18 @@ include_directories(
 )
 
 include(GNUInstallDirs)
+include(CheckSymbolExists)
+
+check_cxx_source_compiles("
+    #include <fcntl.h>
+    #include <sys/stat.h>
+
+    int main() {
+        struct statx buf;
+        statx(AT_FDCWD, \"/foo\", AT_EMPTY_PATH, STATX_BASIC_STATS, &buf);
+        return 0;
+    }
+" GLIBC_HAS_STATX)
 
 # Global components
 add_subdirectory(src/global)
@@ -209,3 +216,26 @@ add_subdirectory(src/global)
 add_subdirectory(src/daemon)
 # Client library
 add_subdirectory(src/client)
+
+option(GKFS_BUILD_TESTS "Build GekkoFS self tests" OFF)
+
+include(CMakeDependentOption)
+cmake_dependent_option(GKFS_INSTALL_TESTS "Install GekkoFS self tests" OFF "GKFS_BUILD_TESTS" OFF)
+
+if(GKFS_BUILD_TESTS)
+    message(STATUS "[gekkofs] Preparing tests...")
+    set(GKFS_TESTS_INTERFACE "lo" CACHE STRING "Network interface to use when running tests (default: lo)")
+    message(STATUS "[gekkofs] Network interface for tests: ${GKFS_TESTS_INTERFACE}")
+
+    message(STATUS "[gekkofs] Check for forwarding tests...")
+    if(ENABLE_FORWARDING)
+        set(GKFS_TESTS_FORWARDING "ON" CACHE STRING "Enable I/O forwarding tests (default: OFF)")
+    else()
+        set(GKFS_TESTS_FORWARDING "OFF" CACHE STRING "Enable I/O forwarding tests (default: OFF)")
+    endif()
+    message(STATUS "[gekkofs] Forwarding tests: ${GKFS_TESTS_FORWARDING}")
+
+    add_subdirectory(tests)
+else()
+    unset(GKFS_TESTS_INTERFACE CACHE)
+endif()

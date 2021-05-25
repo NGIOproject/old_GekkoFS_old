@@ -9,11 +9,21 @@ SOURCE=""
 INSTALL=""
 DEP_CONFIG=""
 
-VALID_DEP_OPTIONS="mogon2 direct all"
+VALID_DEP_OPTIONS="mogon2 mogon1 ngio direct all"
+
+MOGON1_DEPS=(
+    "zstd" "lz4" "snappy" "capstone" "ofi" "mercury" "argobots" "margo" "rocksdb"
+    "syscall_intercept" "date" "verbs"
+)
 
 MOGON2_DEPS=(
+    "bzip2" "zstd" "lz4" "snappy" "capstone" "ofi" "mercury" "argobots" "margo" "rocksdb"
+    "syscall_intercept" "date" "psm2"
+)
+
+NGIO_DEPS=(
     "zstd" "lz4" "snappy" "capstone" "ofi" "mercury" "argobots" "margo" "rocksdb"
-    "syscall_intercept" "date"
+    "syscall_intercept" "date" "agios" "psm2"
 )
 
 DIRECT_DEPS=(
@@ -21,8 +31,8 @@ DIRECT_DEPS=(
 )
 
 ALL_DEPS=(
-    "zstd" "lz4" "snappy" "capstone" "bmi" "ofi" "mercury" "argobots" "margo" "rocksdb"
-     "syscall_intercept" "date"
+    "bzip2" "zstd" "lz4" "snappy" "capstone" "bmi" "ofi" "mercury" "argobots" "margo" "rocksdb"
+     "syscall_intercept" "date" "agios"
 )
 
 usage_short() {
@@ -52,7 +62,7 @@ optional arguments:
                 defaults to 'all'
     -c <CONFIG>, --config <CONFIG>
                 allows additional configurations, e.g., for specific clusters
-                supported values: {mogon2, direct, all}
+                supported values: {mogon1, mogon2, ngio, direct, all}
                 defaults to 'direct'
     -d <DEPENDENCY>, --dependency <DEPENDENCY>
                 download a specific dependency and ignore --config setting. If unspecified
@@ -69,19 +79,31 @@ list_dependencies() {
 
     echo "Available dependencies: "
 
+    echo -n "  Mogon 1: "
+    for d in "${MOGON1_DEPS[@]}"; do
+        echo -n "$d "
+    done
+	echo
     echo -n "  Mogon 2: "
     for d in "${MOGON2_DEPS[@]}"; do
         echo -n "$d "
     done
+	echo
+    echo -n "  NGIO: "
+    for d in "${NGIO_DEPS[@]}"; do
+        echo -n "$d "
+    done
+	echo
     echo -n "  Direct GekkoFS dependencies: "
     for d in "${DIRECT_DEPS[@]}"; do
         echo -n "$d "
     done
+	echo
     echo -n "  All: "
     for d in "${ALL_DEPS[@]}"; do
         echo -n "$d "
     done
-    echo ""
+    echo
 }
 
 check_dependency() {
@@ -94,7 +116,6 @@ check_dependency() {
       if echo "${DEPENDENCY}" | grep -q "${DEP}"; then
         return
       fi
-#      [[ "${DEPENDENCY}" == "${DEP}" ]] && return
   else
       # if not check if dependency is part of dependency config
       for e in "${DEP_CONFIG[@]}"; do
@@ -217,9 +238,17 @@ else
 fi
 # enable predefined dependency template
 case ${TMP_DEP_CONF} in
+mogon1)
+  DEP_CONFIG=("${MOGON1_DEPS[@]}")
+  echo "'Mogon1' dependencies are compiled"
+  ;;
 mogon2)
   DEP_CONFIG=("${MOGON2_DEPS[@]}")
   echo "'Mogon2' dependencies are compiled"
+  ;;
+ngio)
+  DEP_CONFIG=("${NGIO_DEPS[@]}")
+  echo "'NGIO' dependencies are compiled"
   ;;
 all)
   DEP_CONFIG=("${ALL_DEPS[@]}")
@@ -248,6 +277,7 @@ set -e
 
 export CPATH="${CPATH}:${INSTALL}/include"
 export LIBRARY_PATH="${LIBRARY_PATH}:${INSTALL}/lib:${INSTALL}/lib64"
+export PKG_CONFIG_PATH="${INSTALL}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 ## Third party dependencies
 
@@ -284,13 +314,21 @@ if check_dependency "snappy" "${DEP_CONFIG[@]}"; then
     make install
 fi
 
+# build bzip2 for rocksdb
+if check_dependency "bzip2" "${DEP_CONFIG[@]}"; then
+    echo "############################################################ Installing:  bzip2"
+    CURR=${SOURCE}/bzip2
+    cd "${CURR}"
+    make install PREFIX="${INSTALL}"
+fi
+
 # build capstone for syscall-intercept
 if check_dependency "capstone" "${DEP_CONFIG[@]}"; then
     echo "############################################################ Installing:  capstone"
     CURR=${SOURCE}/capstone
     prepare_build_dir "${CURR}"
     cd "${CURR}"/build
-    $CMAKE -DCMAKE_INSTALL_PREFIX=/home/vef/gekkofs_deps/install -DCMAKE_BUILD_TYPE:STRING=Release ..
+    $CMAKE -DCMAKE_INSTALL_PREFIX="${INSTALL}" -DCMAKE_BUILD_TYPE:STRING=Release ..
     make -j"${CORES}" install
 fi
 
@@ -319,12 +357,32 @@ if check_dependency "ofi" "${DEP_CONFIG[@]}"; then
         #libfabric
         CURR=${SOURCE}/libfabric
         prepare_build_dir ${CURR}
+        cd ${CURR}
+        ./autogen.sh
         cd ${CURR}/build
-        ../configure --prefix=${INSTALL} --enable-tcp=yes
+        OFI_CONFIG="../configure --prefix=${INSTALL} --enable-tcp=yes"
+        if check_dependency "verbs" "${DEP_CONFIG[@]}"; then
+            OFI_CONFIG="${OFI_CONFIG} --enable-verbs=yes"
+        elif check_dependency "psm2" "${DEP_CONFIG[@]}"; then
+            OFI_CONFIG="${OFI_CONFIG} --enable-psm2=yes --with-psm2-src=${SOURCE}/psm2"
+        elif check_dependency "psm2-system" "${DEP_CONFIG[@]}"; then
+            OFI_CONFIG="${OFI_CONFIG} --enable-psm2=yes"
+        fi
+         ${OFI_CONFIG}
         make -j${CORES}
         make install
         [ "${PERFORM_TEST}" ] && make check
     fi
+fi
+
+# AGIOS
+if check_dependency "agios" "${DEP_CONFIG[@]}"; then
+	echo "############################################################ Installing:  AGIOS"
+	CURR=${SOURCE}/agios
+	prepare_build_dir "${CURR}"
+	cd "${CURR}"/build
+	$CMAKE -DCMAKE_INSTALL_PREFIX="${INSTALL}" ..
+	make install
 fi
 
 # Mercury
@@ -402,7 +460,7 @@ if check_dependency "syscall_intercept" "${DEP_CONFIG[@]}"; then
     CURR=${SOURCE}/syscall_intercept
     prepare_build_dir "${CURR}"
     cd "${CURR}"/build
-    $CMAKE -DCMAKE_INSTALL_PREFIX="${INSTALL}" -DCMAKE_BUILD_TYPE:STRING=Debug -DBUILD_EXAMPLES:BOOL=OFF -DBUILD_TESTS:BOOK=OFF ..
+    $CMAKE -DCMAKE_PREFIX_PATH="${INSTALL}" -DCMAKE_INSTALL_PREFIX="${INSTALL}" -DCMAKE_BUILD_TYPE:STRING=Debug -DBUILD_EXAMPLES:BOOL=OFF -DBUILD_TESTS:BOOK=OFF ..
     make install
 fi
 

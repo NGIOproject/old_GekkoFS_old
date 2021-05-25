@@ -6,6 +6,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2020-09-15
+## New
+- Both client library and daemon have been extended to support the ofi+verbs
+  protocol.
+- A new Python testing harness has been implemented to support integration
+  tests. The end goal is to increase the robustness of the code in the mid- to
+  long-term.
+- The RPC protocol and the usage of shared memory for intra-node communication
+  no longer need to be activated on compile time. New arguments
+  `-P|--rpc-protocol` and `--auto-sm` have been added to the daemon to this
+  effect. This configuration options are propagated to clients when they
+  initialize and contact daemons.
+- Native support for the Omni-Path network protocol by choosing the `ofi+psm2`
+  RPC protocol. Note that this requires `libfabric`'s version to be greater
+  than `1.8` as well as `psm2` to be installed in the system. Clients must set
+  `FI_PSM2_DISCONNECT=1` to be able to reconnect once the client is shut down
+  once.
+  *Known limitations:* Client reconnect doesn't always work. Apparently, if
+  clients reconnect too fast the servers won't accept the connections. Also,
+  currently more than 16 clients per node are not supported.
+- A new execution mode called `GekkoFWD` that allows GekkoFS to run as
+  a user-level I/O forwarding infrastructure for applications. In this mode,
+  I/O operations from an application are intercepted and forwarded to a single
+  GekkoFS daemon that is chosen according to a pre-defined distribution. In the
+  daemons, the requests are scheduled using the AGIOS scheduling library before
+  they are dispatched to the shared backend parallel file system.
+- The `fsync()` system call is now fully supported.
+## Improved
+- Argobots tasks in the daemon are now wrapped in a dedicated class,
+  effectively removing the dependency. This lays ground work for future
+  non-Argobots I/O implementations.
+- The `readdir()` implementation has been refactored and improved.
+- Improvements on how to the installation scripts manage dependencies.
+## Fixed
+- The server sometimes crashed due to uncaught system errors in the storage
+  backend. This has now been fixed.
+- Fixed a bug that broke `ls` on some architectures.
+- Fixed a bug that leaked internal errors from the interception library to
+  client applications via `errno` propagation.
+
 ## [0.7.0] - 2020-02-05
 ## Added
  - Adedd support for `eventfd()`and `eventfd2()` system calls.
@@ -86,7 +126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Intercept I/O syscalls instead of GlibC function using [syscall intercept library](https://github.com/pmem/syscall_intercept)
 
 ## [0.4.0] - 2019-04-18
-First GekkoFS pubblic release
+First GekkoFS public release
 
 This version provides a client library that uses GLibC I/O function interception.
 

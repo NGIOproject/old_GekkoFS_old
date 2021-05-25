@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -15,6 +15,9 @@
 #include <daemon/classes/rpc_data.hpp>
 
 using namespace std;
+
+namespace gkfs {
+namespace daemon {
 
 // Getter/Setter
 
@@ -49,3 +52,6 @@ const std::string& RPCData::self_addr_str() const {
 void RPCData::self_addr_str(const std::string& addr_str) {
     self_addr_str_ = addr_str;
 }
+
+} // namespace daemon
+} // namespace gkfs

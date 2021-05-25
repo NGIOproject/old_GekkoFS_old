@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -15,7 +15,10 @@
 #ifndef LFS_RPC_DATA_HPP
 #define LFS_RPC_DATA_HPP
 
-#include <daemon/main.hpp>
+#include <daemon/daemon.hpp>
+
+namespace gkfs {
+namespace daemon {
 
 class RPCData {
 
@@ -59,8 +62,9 @@ public:
 
     void self_addr_str(const std::string& addr_str);
 
-
 };
 
+} // namespace daemon
+} // namespace gkfs
 
 #endif //LFS_RPC_DATA_HPP

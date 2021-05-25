@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		cmake \
 		gcc \
 		g++ \
+		# AGIOS dependencies
+		libconfig-dev \
 		# Mercury dependencies
 		libltdl-dev \
 		lbzip2 \
@@ -35,14 +37,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		libboost-program-options-dev \
 		valgrind \
 		uuid-dev \
+		python3 \
+		python3-dev \
+		python3-venv \
+		expect \
 # Clean apt cache to reduce image layer size
 && rm -rf /var/lib/apt/lists/*
 
-# Download dependencies source
-COPY scripts/dl_dep.sh		$SCRIPTS_PATH/
-RUN /bin/bash $SCRIPTS_PATH/dl_dep.sh $DEPS_SRC_PATH all
-
-# Compile dependencies
-COPY scripts/compile_dep.sh $SCRIPTS_PATH/
-COPY scripts/patches        $SCRIPTS_PATH/patches
-RUN /bin/bash $SCRIPTS_PATH/compile_dep.sh $DEPS_SRC_PATH $INSTALL_PATH
+## COPY scripts/dl_dep.sh		$SCRIPTS_PATH/
+## COPY scripts/compile_dep.sh $SCRIPTS_PATH/
+## COPY scripts/patches        $SCRIPTS_PATH/patches
+## 
+## # Download dependencies source
+## RUN /bin/bash $SCRIPTS_PATH/dl_dep.sh $DEPS_SRC_PATH all
+## 
+## # Compile dependencies
+## RUN /bin/bash $SCRIPTS_PATH/compile_dep.sh $DEPS_SRC_PATH $INSTALL_PATH

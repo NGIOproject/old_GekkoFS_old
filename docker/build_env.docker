@@ -25,6 +25,7 @@ RUN yum -y -q update  && yum -y -q install \
 	gcc \
 	gcc-c++ \
 	openssl-devel \
+	libconfig-devel \
 	# Mercury dependencies
 	libtool \
 	libtool-ltdl-devel \
@@ -34,6 +35,7 @@ RUN yum -y -q update  && yum -y -q install \
 	snappy-devel \
 	libzstd-devel \
 	lz4-devel \
+	bzip2 \
 	bzip2-devel \
 	# ada-fs requires C++ 14
 	devtoolset-8-gcc \
@@ -81,6 +83,7 @@ RUN yum -y -q update  && yum -y -q install \
 	gcc \
 	gcc-c++ \
 	openssl-devel \
+	libconfig-devel \
 	# Mercury dependencies
 	libtool \
 	libtool-ltdl-devel \
@@ -90,6 +93,7 @@ RUN yum -y -q update  && yum -y -q install \
 	snappy-devel \
 	libzstd-devel \
 	lz4-devel \
+	bzip2 \
 	bzip2-devel \
 	# ada-fs requires C++ 14
 	devtoolset-8-gcc \

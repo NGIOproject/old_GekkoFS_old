@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -15,21 +15,21 @@
 #define LIBGKFS_UTILS_MAKE_ARRAY_HPP
 
 namespace gkfs {
-namespace utils {
+namespace util {
 
-template <typename... T>
-constexpr auto make_array(T&&... values) ->
-    std::array<
-       typename std::decay<
-           typename std::common_type<T...>::type>::type,
-       sizeof...(T)> {
-    return std::array<
+template<typename... T>
+constexpr auto make_array(T&& ... values) ->
+std::array<
         typename std::decay<
-            typename std::common_type<T...>::type>::type,
-        sizeof...(T)>{std::forward<T>(values)...};
+                typename std::common_type<T...>::type>::type,
+        sizeof...(T)> {
+    return std::array<
+            typename std::decay<
+                    typename std::common_type<T...>::type>::type,
+            sizeof...(T)>{std::forward<T>(values)...};
 }
 
-} // namespace utils
+} // namespace util
 } // namespace gkfs
 
 #endif // LIBGKFS_UTILS_MAKE_ARRAY_HPP

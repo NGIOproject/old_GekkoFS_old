@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -15,29 +15,30 @@
 #ifndef LFS_FS_DATA_H
 #define LFS_FS_DATA_H
 
-#include <daemon/main.hpp>
-
-/* Forward declarations */
-class MetadataDB;
-class ChunkStorage;
+#include <daemon/daemon.hpp>
 
 #include <unordered_map>
 #include <map>
 #include <functional> //std::hash
+
+/* Forward declarations */
+namespace gkfs {
+namespace metadata {
+class MetadataDB;
+}
+
+namespace data {
+class ChunkStorage;
+}
+
+namespace daemon {
 
 class FsData {
 
 private:
     FsData() {}
 
-    // Caching
-    std::unordered_map<std::string, std::string> hashmap_;
-    std::hash<std::string> hashf_;
-
-    // Later the blocksize will likely be coupled to the chunks to allow individually big chunk sizes.
-    blksize_t blocksize_;
-
-    //logger
+    // logger
     std::shared_ptr<spdlog::logger> spdlogger_;
 
     // paths
@@ -45,13 +46,16 @@ private:
     std::string mountdir_;
     std::string metadir_;
 
+    // RPC management
+    std::string rpc_protocol_;
     std::string bind_addr_;
     std::string hosts_file_;
+    bool use_auto_sm_;
 
     // Database
-    std::shared_ptr<MetadataDB> mdb_;
+    std::shared_ptr<gkfs::metadata::MetadataDB> mdb_;
     // Storage backend
-    std::shared_ptr<ChunkStorage> storage_;
+    std::shared_ptr<gkfs::data::ChunkStorage> storage_;
 
     // configurable metadata
     bool atime_state_;
@@ -72,18 +76,6 @@ public:
 
     // getter/setter
 
-    const std::unordered_map<std::string, std::string>& hashmap() const;
-
-    void hashmap(const std::unordered_map<std::string, std::string>& hashmap_);
-
-    const std::hash<std::string>& hashf() const;
-
-    void hashf(const std::hash<std::string>& hashf_);
-
-    blksize_t blocksize() const;
-
-    void blocksize(blksize_t blocksize_);
-
     const std::shared_ptr<spdlog::logger>& spdlogger() const;
 
     void spdlogger(const std::shared_ptr<spdlog::logger>& spdlogger_);
@@ -100,21 +92,29 @@ public:
 
     void metadir(const std::string& metadir_);
 
-    const std::shared_ptr<MetadataDB>& mdb() const;
+    const std::shared_ptr<gkfs::metadata::MetadataDB>& mdb() const;
 
-    void mdb(const std::shared_ptr<MetadataDB>& mdb);
+    void mdb(const std::shared_ptr<gkfs::metadata::MetadataDB>& mdb);
 
     void close_mdb();
 
-    const std::shared_ptr<ChunkStorage>& storage() const;
+    const std::shared_ptr<gkfs::data::ChunkStorage>& storage() const;
 
-    void storage(const std::shared_ptr<ChunkStorage>& storage);
+    void storage(const std::shared_ptr<gkfs::data::ChunkStorage>& storage);
+
+    const std::string& rpc_protocol() const;
+
+    void rpc_protocol(const std::string& rpc_protocol);
 
     const std::string& bind_addr() const;
 
     void bind_addr(const std::string& addr);
 
     const std::string& hosts_file() const;
+
+    bool use_auto_sm() const;
+
+    void use_auto_sm(bool use_auto_sm);
 
     void hosts_file(const std::string& lookup_file);
 
@@ -140,5 +140,7 @@ public:
 
 };
 
+} // namespace daemon
+} // namespace gkfs
 
 #endif //LFS_FS_DATA_H

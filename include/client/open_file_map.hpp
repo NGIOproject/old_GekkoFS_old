@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -12,13 +12,16 @@
 */
 
 
-#ifndef IFS_OPEN_FILE_MAP_HPP
-#define IFS_OPEN_FILE_MAP_HPP
+#ifndef GEKKOFS_OPEN_FILE_MAP_HPP
+#define GEKKOFS_OPEN_FILE_MAP_HPP
 
 #include <map>
 #include <mutex>
 #include <memory>
 #include <atomic>
+
+namespace gkfs {
+namespace filemap {
 
 /* Forward declaration */
 class OpenDir;
@@ -54,7 +57,7 @@ public:
 
     OpenFile(const std::string& path, int flags, FileType type = FileType::regular);
 
-    ~OpenFile();
+    ~OpenFile() = default;
 
     // getter/setter
     std::string path() const;
@@ -111,8 +114,11 @@ public:
     int dup2(int oldfd, int newfd);
 
     int generate_fd_idx();
+
     int get_fd_idx();
 };
 
+} // namespace filemap
+} // namespace gkfs
 
-#endif //IFS_OPEN_FILE_MAP_HPP
+#endif //GEKKOFS_OPEN_FILE_MAP_HPP

@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -14,7 +14,7 @@
 #ifndef GKFS_DAEMON_ENV
 #define GKFS_DAEMON_ENV
 
-#include <global/configure.hpp>
+#include <config.hpp>
 
 #define ADD_PREFIX(str) DAEMON_ENV_PREFIX str
 

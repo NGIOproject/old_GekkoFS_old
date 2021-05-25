@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -14,14 +14,13 @@
 #include <global/log_util.hpp>
 
 #include <spdlog/sinks/basic_file_sink.h>
-#include <exception>
 #include <vector>
 #include <algorithm>
 #include <list>
 
 using namespace std;
 
-spdlog::level::level_enum get_spdlog_level(string level_str) {
+spdlog::level::level_enum gkfs::log::get_level(string level_str) {
     char* parse_end;
     auto level = strtoul(level_str.c_str(), &parse_end, 10);
     if (parse_end != (level_str.c_str() + level_str.size())) {
@@ -44,11 +43,11 @@ spdlog::level::level_enum get_spdlog_level(string level_str) {
         else
             throw runtime_error(fmt::format("Error: log level '{}' is invalid. Check help/readme.", level_str));
     } else
-        return get_spdlog_level(level);
+        return get_level(level);
 }
 
-spdlog::level::level_enum get_spdlog_level(unsigned long level) {
-    switch(level) {
+spdlog::level::level_enum gkfs::log::get_level(unsigned long level) {
+    switch (level) {
         case 0:
             return spdlog::level::off;
         case 1:
@@ -66,27 +65,27 @@ spdlog::level::level_enum get_spdlog_level(unsigned long level) {
     }
 }
 
-void setup_loggers(const vector<string>& loggers_name,
-        spdlog::level::level_enum level, const string& path) {
+void gkfs::log::setup(const vector<string>& loggers_name,
+                      spdlog::level::level_enum level, const string& path) {
 
-        /* Create common sink */
-        auto file_sink = make_shared<spdlog::sinks::basic_file_sink_mt>(path);
+    /* Create common sink */
+    auto file_sink = make_shared<spdlog::sinks::basic_file_sink_mt>(path);
 
-        /* Create and configure loggers */
-        auto loggers = list<shared_ptr<spdlog::logger>>();
-        for(const auto& name: loggers_name){
-            auto logger = make_shared<spdlog::logger>(name, file_sink);
-            logger->flush_on(spdlog::level::trace);
-            loggers.push_back(logger);
-        }
+    /* Create and configure loggers */
+    auto loggers = list<shared_ptr<spdlog::logger>>();
+    for (const auto& name: loggers_name) {
+        auto logger = make_shared<spdlog::logger>(name, file_sink);
+        logger->flush_on(spdlog::level::trace);
+        loggers.push_back(logger);
+    }
 
-        /* register loggers */
-        for(const auto& logger: loggers){
-            spdlog::register_logger(logger);
-        }
+    /* register loggers */
+    for (const auto& logger: loggers) {
+        spdlog::register_logger(logger);
+    }
 
-        // set logger format
-        spdlog::set_pattern("[%C-%m-%d %H:%M:%S.%f] %P [%L][%n] %v");
+    // set logger format
+    spdlog::set_pattern("[%C-%m-%d %H:%M:%S.%f] %P [%L][%n] %v");
 
-        spdlog::set_level(level);
+    spdlog::set_level(level);
 }

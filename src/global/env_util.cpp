@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -11,20 +11,14 @@
   SPDX-License-Identifier: MIT
 */
 
-#include <string>
-#include <cstdlib>
 #include <global/env_util.hpp>
 
-namespace gkfs {
-namespace env {
+#include <string>
+#include <cstdlib>
 
-std::string
-get_var(const std::string& name, 
-        const std::string& default_value) {
+using namespace std;
 
+string gkfs::env::get_var(const string& name, const string& default_value) {
     const char* const val = ::secure_getenv(name.c_str());
-    return val != nullptr ? std::string(val) : default_value;
+    return val != nullptr ? string(val) : default_value;
 }
-
-} // namespace env
-} // namespace gkfs

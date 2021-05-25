@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -110,8 +110,8 @@ static const auto constexpr most             = log_level::print_most;
 static const auto constexpr all              = log_level::print_all;
 static const auto constexpr help             = log_level::print_help;
 
-static const auto constexpr level_names = 
-    utils::make_array(
+static const auto constexpr level_names =
+        util::make_array(
         "syscall",
         "syscall", // sycall_entry uses the same name as syscall
         "info",

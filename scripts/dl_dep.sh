@@ -9,20 +9,30 @@ NA_LAYER=""
 DEP_CONFIG=""
 VERBOSE=false
 
-VALID_DEP_OPTIONS="mogon2 direct all"
+VALID_DEP_OPTIONS="mogon2 mogon1 ngio direct all"
 
-MOGON2_DEPS=(
-    "zstd" "lz4" "snappy" "capstone" "ofi" "mercury" "argobots" "margo" "rocksdb"
+MOGON1_DEPS=(
+    "zstd" "lz4" "snappy" "capstone" "ofi-verbs" "mercury" "argobots" "margo" "rocksdb"
     "syscall_intercept" "date"
 )
 
+MOGON2_DEPS=(
+    "bzip2" "zstd" "lz4" "snappy" "capstone" "ofi-experimental" "mercury" "argobots" "margo" "rocksdb-experimental"
+    "syscall_intercept-glibc3" "date" "psm2"
+)
+
+NGIO_DEPS=(
+    "zstd" "lz4" "snappy" "capstone" "ofi-experimental" "mercury" "argobots" "margo" "rocksdb"
+    "syscall_intercept" "date" "psm2" "agios"
+
+)
 DIRECT_DEPS=(
   "ofi" "mercury" "argobots" "margo" "rocksdb" "syscall_intercept" "date"
 )
 
 ALL_DEPS=(
-    "zstd" "lz4" "snappy" "capstone" "bmi" "ofi" "mercury" "argobots" "margo" "rocksdb"
-     "syscall_intercept" "date"
+    "bzip2" "zstd" "lz4" "snappy" "capstone" "bmi" "ofi" "mercury" "argobots" "margo" "rocksdb"
+     "syscall_intercept" "date" "agios"
 )
 
 # Stop all backround jobs on interruption.
@@ -48,19 +58,31 @@ list_dependencies() {
 
     echo "Available dependencies: "
 
+    echo -n "  Mogon 1: "
+    for d in "${MOGON1_DEPS[@]}"; do
+        echo -n "$d "
+    done
+	echo
     echo -n "  Mogon 2: "
     for d in "${MOGON2_DEPS[@]}"; do
         echo -n "$d "
     done
+	echo
+    echo -n "  NGIO: "
+    for d in "${NGIO_DEPS[@]}"; do
+        echo -n "$d "
+    done
+	echo
     echo -n "  Direct GekkoFS dependencies: "
     for d in "${DIRECT_DEPS[@]}"; do
         echo -n "$d "
     done
+	echo
     echo -n "  All: "
     for d in "${ALL_DEPS[@]}"; do
         echo -n "$d "
     done
-    echo ""
+    echo 
 }
 
 check_dependency() {
@@ -73,7 +95,6 @@ check_dependency() {
       if echo "${DEPENDENCY}" | grep -q "${DEP}"; then
         return
       fi
-#      [[ "${DEPENDENCY}" == "${DEP}" ]] && return
   else
       # if not check if dependency is part of dependency config
       for e in "${DEP_CONFIG[@]}"; do
@@ -110,7 +131,7 @@ clonedeps() {
     fi
     # fix the version
     cd "${SOURCE}/${FOLDER}" && git checkout -qf ${COMMIT}
-    echo "${ACTION} ${FOLDER} [$COMMIT]"
+    echo "${ACTION} '${REPO}' to '${FOLDER}' with commit '[${COMMIT}]' and flags '${GIT_FLAGS}'"
 
     # apply patch if provided
     if [[ -n "${PATCH}" ]]; then
@@ -141,7 +162,7 @@ wgetdeps() {
     curl ${COMMON_CURL_FLAGS} "$URL" || error_exit "Failed to download ${URL}" $?
     tar -xf "$FILENAME" --directory "${SOURCE}/${FOLDER}" --strip-components=1
     rm -f "$FILENAME"
-    echo "Downloaded ${FOLDER}"
+    echo "Downloaded '${URL}' to '${FOLDER}'"
 }
 
 usage_short() {
@@ -170,7 +191,7 @@ optional arguments:
                                 defaults to 'ofi'
         -c <CONFIG>, --config <CONFIG>
                                 allows additional configurations, e.g., for specific clusters
-                                supported values: {mogon2, direct, all}
+                                supported values: {mogon2, mogon1, ngio, direct, all}
                                 defaults to 'direct'
         -d <DEPENDENCY>, --dependency <DEPENDENCY>
                                 download a specific dependency and ignore --config setting. If unspecified
@@ -248,9 +269,17 @@ fi
 
 # enable predefined dependency template
 case ${TMP_DEP_CONF} in
+mogon1)
+  DEP_CONFIG=("${MOGON1_DEPS[@]}")
+  [[ -z "${DEPENDENCY}" ]] && echo "'Mogon1' dependencies are downloaded"
+  ;;
 mogon2)
   DEP_CONFIG=("${MOGON2_DEPS[@]}")
   [[ -z "${DEPENDENCY}" ]] && echo "'Mogon2' dependencies are downloaded"
+  ;;
+ngio)
+  DEP_CONFIG=("${NGIO_DEPS[@]}")
+  [[ -z "${DEPENDENCY}" ]] && echo "'NGIO' dependencies are downloaded"
   ;;
 all)
   DEP_CONFIG=("${ALL_DEPS[@]}")
@@ -293,6 +322,11 @@ if check_dependency "snappy" "${DEP_CONFIG[@]}"; then
     wgetdeps "snappy" "https://github.com/google/snappy/archive/1.1.7.tar.gz" &
 fi
 
+# get bzip2 for rocksdb
+if check_dependency "bzip2" "${DEP_CONFIG[@]}"; then
+    wgetdeps "bzip2" "https://sourceforge.net/projects/bzip2/files/bzip2-1.0.6.tar.gz" &
+fi
+
 # get capstone for syscall-intercept
 if check_dependency "capstone" "${DEP_CONFIG[@]}"; then
     wgetdeps "capstone" "https://github.com/aquynh/capstone/archive/4.0.1.tar.gz" &
@@ -308,15 +342,25 @@ if check_dependency "bmi" "${DEP_CONFIG[@]}"; then
 fi
 
 # get libfabric
-if check_dependency "ofi" "${DEP_CONFIG[@]}"; then
-    if [ "${NA_LAYER}" == "ofi" ] || [ "${NA_LAYER}" == "all" ]; then
-        wgetdeps "libfabric" "https://github.com/ofiwg/libfabric/releases/download/v1.8.1/libfabric-1.8.1.tar.bz2" &
+if [ "${NA_LAYER}" == "ofi" ] || [ "${NA_LAYER}" == "all" ]; then
+    if check_dependency "ofi-experimental" "${DEP_CONFIG[@]}"; then
+        clonedeps "libfabric" "https://github.com/ofiwg/libfabric.git" "" "-b v1.9.1" &
+    elif check_dependency "ofi-verbs" "${DEP_CONFIG[@]}"; then
+        # libibverbs 1.2.1-1 used on mogon 1i (installed on system) which is linked to libfabric
+        # libfabric 1.8 random RPCs fail to be send. 1.9 RPC client cannot be started when in an MPI environment
+        clonedeps "libfabric" "https://github.com/ofiwg/libfabric.git" "" "-b v1.7.2" &
+    elif check_dependency "ofi" "${DEP_CONFIG[@]}"; then
+        clonedeps "libfabric" "https://github.com/ofiwg/libfabric.git" "" "-b v1.8.1" &
     fi
+fi
+
+if check_dependency "psm2" "${DEP_CONFIG[@]}"; then
+    wgetdeps "psm2" "https://github.com/intel/opa-psm2/archive/PSM2_11.2.86.tar.gz" &
 fi
 
 # get Mercury
 if check_dependency "mercury" "${DEP_CONFIG[@]}"; then
-    clonedeps "mercury" "https://github.com/mercury-hpc/mercury" "fd410dfb9852b2b98d21113531f3058f45bfcd64"  "--recurse-submodules" &
+    clonedeps "mercury" "https://github.com/mercury-hpc/mercury" "41caa143a07ed179a3149cac4af0dc7aa3f946fd" "--recurse-submodules" &
 fi
 
 # get Argobots
@@ -326,17 +370,26 @@ fi
 
 # get Margo
 if check_dependency "margo" "${DEP_CONFIG[@]}"; then
-    clonedeps "margo" "https://xgitlab.cels.anl.gov/sds/margo.git" "016dbdce22da3fe4f97b46c20a53bced9370a217" &
+    clonedeps "margo" "https://xgitlab.cels.anl.gov/sds/margo.git" "v0.6.3" &
 fi
 
 # get rocksdb
-if check_dependency "rocksdb" "${DEP_CONFIG[@]}"; then
+if check_dependency "rocksdb-experimental" "${DEP_CONFIG[@]}"; then
+    wgetdeps "rocksdb" "https://github.com/facebook/rocksdb/archive/v6.11.4.tar.gz" &
+elif check_dependency "rocksdb" "${DEP_CONFIG[@]}"; then
     wgetdeps "rocksdb" "https://github.com/facebook/rocksdb/archive/v6.2.2.tar.gz" &
 fi
 
 # get syscall_intercept
-if check_dependency "syscall_intercept" "${DEP_CONFIG[@]}"; then
+if check_dependency "syscall_intercept-glibc3" "${DEP_CONFIG[@]}"; then
+    clonedeps "syscall_intercept" "https://github.com/GBuella/syscall_intercept" "ea124fb4ab9eb56bc22a0e94f2b90928c7a88e8c" "-b add_endbr64_and_lea" "syscall_intercept.patch" &
+elif check_dependency "syscall_intercept" "${DEP_CONFIG[@]}"; then
     clonedeps "syscall_intercept" "https://github.com/pmem/syscall_intercept.git" "cc3412a2ad39f2e26cc307d5b155232811d7408e" "" "syscall_intercept.patch" &
+fi
+
+# get AGIOS
+if check_dependency "agios" "${DEP_CONFIG[@]}"; then
+clonedeps "agios" "https://github.com/francielizanon/agios.git" "c26a6544200f823ebb8f890dd94e653d148bf226" "-b development" &
 fi
 
 # get date

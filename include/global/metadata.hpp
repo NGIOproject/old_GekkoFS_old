@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -16,14 +16,15 @@
 #pragma once
 
 
-#include "global/configure.hpp"
+#include <config.hpp>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string>
 
+namespace gkfs {
+namespace metadata {
 
 constexpr mode_t LINK_MODE = ((S_IRWXU | S_IRWXG | S_IRWXO) | S_IFLNK);
-
 
 class Metadata {
 private:
@@ -40,40 +41,67 @@ private:
 
 
 public:
-    Metadata();
+    Metadata() = default;
+
     explicit Metadata(mode_t mode);
+
 #ifdef HAS_SYMLINKS
+
     Metadata(mode_t mode, const std::string& target_path);
+
 #endif
+
     // Construct from a binary representation of the object
     explicit Metadata(const std::string& binary_str);
 
     std::string serialize() const;
 
     void init_ACM_time();
+
     void update_ACM_time(bool a, bool c, bool m);
 
     //Getter and Setter
     time_t atime() const;
+
     void atime(time_t atime_);
+
     time_t mtime() const;
+
     void mtime(time_t mtime_);
+
     time_t ctime() const;
+
     void ctime(time_t ctime_);
+
     mode_t mode() const;
+
     void mode(mode_t mode_);
+
     nlink_t link_count() const;
+
     void link_count(nlink_t link_count_);
+
     size_t size() const;
+
     void size(size_t size_);
+
     blkcnt_t blocks() const;
+
     void blocks(blkcnt_t blocks_);
+
 #ifdef HAS_SYMLINKS
+
     std::string target_path() const;
+
     void target_path(const std::string& target_path);
+
     bool is_link() const;
+
 #endif
 };
+
+} // namespace metadata
+} // namespace gkfs
 
 
 #endif //FS_METADATA_H

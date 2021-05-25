@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -11,43 +11,46 @@
   SPDX-License-Identifier: MIT
 */
 
-#include "global/metadata.hpp"
-#include "global/configure.hpp"
+#include <global/metadata.hpp>
+#include <config.hpp>
 
 #include <fmt/format.h>
+
+extern "C" {
 #include <sys/stat.h>
 #include <unistd.h>
+}
 
 #include <ctime>
 #include <cassert>
 
+namespace gkfs {
+namespace metadata {
 
 static const char MSP = '|'; // metadata separator
 
 Metadata::Metadata(const mode_t mode) :
-    atime_(),
-    mtime_(),
-    ctime_(),
-    mode_(mode),
-    link_count_(0),
-    size_(0),
-    blocks_(0)
-{
+        atime_(),
+        mtime_(),
+        ctime_(),
+        mode_(mode),
+        link_count_(0),
+        size_(0),
+        blocks_(0) {
     assert(S_ISDIR(mode_) || S_ISREG(mode_));
 }
 
 #ifdef HAS_SYMLINKS
 
 Metadata::Metadata(const mode_t mode, const std::string& target_path) :
-    atime_(),
-    mtime_(),
-    ctime_(),
-    mode_(mode),
-    link_count_(0),
-    size_(0),
-    blocks_(0),
-    target_path_(target_path)
-{
+        atime_(),
+        mtime_(),
+        ctime_(),
+        mode_(mode),
+        link_count_(0),
+        size_(0),
+        blocks_(0),
+        target_path_(target_path) {
     assert(S_ISLNK(mode_) || S_ISDIR(mode_) || S_ISREG(mode_));
     // target_path should be there only if this is a link
     assert(target_path_.empty() || S_ISLNK(mode_));
@@ -75,31 +78,31 @@ Metadata::Metadata(const std::string& binary_str) {
     ptr += read;
 
     // The order is important. don't change.
-    if (MDATA_USE_ATIME) {
+    if (gkfs::config::metadata::use_atime) {
         assert(*ptr == MSP);
         atime_ = static_cast<time_t>(std::stol(++ptr, &read));
         assert(read > 0);
         ptr += read;
     }
-    if (MDATA_USE_MTIME) {
+    if (gkfs::config::metadata::use_mtime) {
         assert(*ptr == MSP);
         mtime_ = static_cast<time_t>(std::stol(++ptr, &read));
         assert(read > 0);
         ptr += read;
     }
-    if (MDATA_USE_CTIME) {
+    if (gkfs::config::metadata::use_ctime) {
         assert(*ptr == MSP);
         ctime_ = static_cast<time_t>(std::stol(++ptr, &read));
         assert(read > 0);
         ptr += read;
     }
-    if (MDATA_USE_LINK_CNT) {
+    if (gkfs::config::metadata::use_link_cnt) {
         assert(*ptr == MSP);
         link_count_ = static_cast<nlink_t>(std::stoul(++ptr, &read));
         assert(read > 0);
         ptr += read;
     }
-    if (MDATA_USE_BLOCKS) { // last one will not encounter a delimiter anymore
+    if (gkfs::config::metadata::use_blocks) { // last one will not encounter a delimiter anymore
         assert(*ptr == MSP);
         blocks_ = static_cast<blkcnt_t>(std::stoul(++ptr, &read));
         assert(read > 0);
@@ -111,7 +114,7 @@ Metadata::Metadata(const std::string& binary_str) {
     assert(*ptr == MSP);
     target_path_ = ++ptr;
     // target_path should be there only if this is a link
-    assert(target_path_.size() == 0 || S_ISLNK(mode_));
+    assert(target_path_.empty() || S_ISLNK(mode_));
     ptr += target_path_.size();
 #endif
 
@@ -119,30 +122,29 @@ Metadata::Metadata(const std::string& binary_str) {
     assert(*ptr == '\0');
 }
 
-std::string Metadata::serialize() const
-{
+std::string Metadata::serialize() const {
     std::string s;
     // The order is important. don't change.
     s += fmt::format_int(mode_).c_str(); // add mandatory mode
     s += MSP;
     s += fmt::format_int(size_).c_str(); // add mandatory size
-    if (MDATA_USE_ATIME) {
+    if (gkfs::config::metadata::use_atime) {
         s += MSP;
         s += fmt::format_int(atime_).c_str();
     }
-    if (MDATA_USE_MTIME) {
+    if (gkfs::config::metadata::use_mtime) {
         s += MSP;
         s += fmt::format_int(mtime_).c_str();
     }
-    if (MDATA_USE_CTIME) {
+    if (gkfs::config::metadata::use_ctime) {
         s += MSP;
         s += fmt::format_int(ctime_).c_str();
     }
-    if (MDATA_USE_LINK_CNT) {
+    if (gkfs::config::metadata::use_link_cnt) {
         s += MSP;
         s += fmt::format_int(link_count_).c_str();
     }
-    if (MDATA_USE_BLOCKS) {
+    if (gkfs::config::metadata::use_blocks) {
         s += MSP;
         s += fmt::format_int(blocks_).c_str();
     }
@@ -180,56 +182,56 @@ time_t Metadata::atime() const {
     return atime_;
 }
 
-void Metadata::atime(time_t atime_) {
-    Metadata::atime_ = atime_;
+void Metadata::atime(time_t atime) {
+    Metadata::atime_ = atime;
 }
 
 time_t Metadata::mtime() const {
     return mtime_;
 }
 
-void Metadata::mtime(time_t mtime_) {
-    Metadata::mtime_ = mtime_;
+void Metadata::mtime(time_t mtime) {
+    Metadata::mtime_ = mtime;
 }
 
 time_t Metadata::ctime() const {
     return ctime_;
 }
 
-void Metadata::ctime(time_t ctime_) {
-    Metadata::ctime_ = ctime_;
+void Metadata::ctime(time_t ctime) {
+    Metadata::ctime_ = ctime;
 }
 
 mode_t Metadata::mode() const {
     return mode_;
 }
 
-void Metadata::mode(mode_t mode_) {
-    Metadata::mode_ = mode_;
+void Metadata::mode(mode_t mode) {
+    Metadata::mode_ = mode;
 }
 
 nlink_t Metadata::link_count() const {
     return link_count_;
 }
 
-void Metadata::link_count(nlink_t link_count_) {
-    Metadata::link_count_ = link_count_;
+void Metadata::link_count(nlink_t link_count) {
+    Metadata::link_count_ = link_count;
 }
 
 size_t Metadata::size() const {
     return size_;
 }
 
-void Metadata::size(size_t size_) {
-    Metadata::size_ = size_;
+void Metadata::size(size_t size) {
+    Metadata::size_ = size;
 }
 
 blkcnt_t Metadata::blocks() const {
     return blocks_;
 }
 
-void Metadata::blocks(blkcnt_t blocks_) {
-    Metadata::blocks_ = blocks_;
+void Metadata::blocks(blkcnt_t blocks) {
+    Metadata::blocks_ = blocks;
 }
 
 #ifdef HAS_SYMLINKS
@@ -252,3 +254,6 @@ bool Metadata::is_link() const {
 }
 
 #endif
+
+} // namespace metadata
+} // namespace gkfs

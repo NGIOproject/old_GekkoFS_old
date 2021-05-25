@@ -1,6 +1,6 @@
 /*
-  Copyright 2018-2019, Barcelona Supercomputing Center (BSC), Spain
-  Copyright 2015-2019, Johannes Gutenberg Universitaet Mainz, Germany
+  Copyright 2018-2020, Barcelona Supercomputing Center (BSC), Spain
+  Copyright 2015-2020, Johannes Gutenberg Universitaet Mainz, Germany
 
   This software was partially supported by the
   EC H2020 funded project NEXTGenIO (Project ID: 671951, www.nextgenio.eu).
@@ -11,52 +11,52 @@
   SPDX-License-Identifier: MIT
 */
 
-#include <fcntl.h>
 
-#include <global/global_defs.hpp>
 #include <client/open_file_map.hpp>
 #include <client/open_dir.hpp>
 #include <client/preload.hpp>
+#include <client/preload_util.hpp>
 #include <client/logging.hpp>
+
+extern "C" {
+#include <fcntl.h>
+}
 
 using namespace std;
 
+namespace gkfs {
+namespace filemap {
+
 OpenFile::OpenFile(const string& path, const int flags, FileType type) :
-    type_(type),
-    path_(path)
-{
+        type_(type),
+        path_(path) {
     // set flags to OpenFile
     if (flags & O_CREAT)
-        flags_[to_underlying(OpenFile_flags::creat)] = true;
+        flags_[gkfs::util::to_underlying(OpenFile_flags::creat)] = true;
     if (flags & O_APPEND)
-        flags_[to_underlying(OpenFile_flags::append)] = true;
+        flags_[gkfs::util::to_underlying(OpenFile_flags::append)] = true;
     if (flags & O_TRUNC)
-        flags_[to_underlying(OpenFile_flags::trunc)] = true;
+        flags_[gkfs::util::to_underlying(OpenFile_flags::trunc)] = true;
     if (flags & O_RDONLY)
-        flags_[to_underlying(OpenFile_flags::rdonly)] = true;
+        flags_[gkfs::util::to_underlying(OpenFile_flags::rdonly)] = true;
     if (flags & O_WRONLY)
-        flags_[to_underlying(OpenFile_flags::wronly)] = true;
+        flags_[gkfs::util::to_underlying(OpenFile_flags::wronly)] = true;
     if (flags & O_RDWR)
-        flags_[to_underlying(OpenFile_flags::rdwr)] = true;
+        flags_[gkfs::util::to_underlying(OpenFile_flags::rdwr)] = true;
 
     pos_ = 0; // If O_APPEND flag is used, it will be used before each write.
 }
 
-OpenFileMap::OpenFileMap():
-    fd_idx(10000),
-    fd_validation_needed(false)
-    {}
-
-OpenFile::~OpenFile() {
-
-}
+OpenFileMap::OpenFileMap() :
+        fd_idx(10000),
+        fd_validation_needed(false) {}
 
 string OpenFile::path() const {
     return path_;
 }
 
-void OpenFile::path(const string& path_) {
-    OpenFile::path_ = path_;
+void OpenFile::path(const string& path) {
+    OpenFile::path_ = path;
 }
 
 unsigned long OpenFile::pos() {
@@ -64,19 +64,19 @@ unsigned long OpenFile::pos() {
     return pos_;
 }
 
-void OpenFile::pos(unsigned long pos_) {
+void OpenFile::pos(unsigned long pos) {
     lock_guard<mutex> lock(pos_mutex_);
-    OpenFile::pos_ = pos_;
+    OpenFile::pos_ = pos;
 }
 
 bool OpenFile::get_flag(OpenFile_flags flag) {
     lock_guard<mutex> lock(pos_mutex_);
-    return flags_[to_underlying(flag)];
+    return flags_[gkfs::util::to_underlying(flag)];
 }
 
 void OpenFile::set_flag(OpenFile_flags flag, bool value) {
     lock_guard<mutex> lock(flag_mutex_);
-    flags_[to_underlying(flag)] = value;
+    flags_[gkfs::util::to_underlying(flag)] = value;
 }
 
 FileType OpenFile::type() const {
@@ -205,3 +205,6 @@ int OpenFileMap::get_fd_idx() {
     std::lock_guard<std::mutex> inode_lock(fd_idx_mutex);
     return fd_idx;
 }
+
+} // namespace filemap
+} // namespace gkfs
